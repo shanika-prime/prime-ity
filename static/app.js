@@ -53,9 +53,9 @@ document.querySelectorAll('input[name="trip_type"]').forEach((el) => {
 });
 
 // ---- File handling ----
-dropzone.addEventListener("click", (e) => {
-  if (e.target !== fileInput) fileInput.click();
-});
+// Note: dropzone is a <label for="fileInput">, so clicking it already opens
+// the file picker natively — no extra JS click handler needed here (adding
+// one caused the picker to double-fire and reopen on mobile).
 dropzone.addEventListener("dragover", (e) => {
   e.preventDefault();
   dropzone.classList.add("is-dragover");
