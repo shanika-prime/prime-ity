@@ -1,0 +1,372 @@
+:root {
+  --navy: #10233F;
+  --navy-deep: #0A1830;
+  --bg: #EEF1F5;
+  --surface: #FFFFFF;
+  --amber: #FFB020;
+  --amber-deep: #C7860A;
+  --green: #2E7D5B;
+  --ink: #10233F;
+  --muted: #5B6472;
+  --line: #DDE3EC;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Header / departure board ---------- */
+.board-header {
+  background: var(--navy);
+  color: #fff;
+}
+.board-header__inner {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 22px 24px 16px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand__mark {
+  color: var(--amber);
+  font-size: 22px;
+  transform: rotate(45deg);
+  display: inline-block;
+}
+.brand__name {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 0.2px;
+}
+.brand__tag {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--amber);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.board-header__ticker {
+  overflow: hidden;
+  white-space: nowrap;
+  border-top: 1px solid rgba(255,255,255,0.12);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: rgba(255,255,255,0.55);
+  padding: 7px 0;
+}
+.board-header__ticker span {
+  display: inline-block;
+  animation: ticker 18s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .board-header__ticker span { animation: none; }
+}
+@keyframes ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+/* ---------- Layout ---------- */
+.wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 36px 24px 80px;
+}
+
+/* ---------- Steps ---------- */
+.steps {
+  display: flex;
+  list-style: none;
+  margin: 0 0 28px;
+  padding: 0;
+  gap: 6px;
+}
+.step {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.5;
+}
+.step.is-active { opacity: 1; border-color: var(--navy); box-shadow: 0 0 0 1px var(--navy) inset; }
+.step.is-done { opacity: 1; }
+.step__num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--amber-deep);
+  background: #FFF3DC;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.step__label {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* ---------- Panels ---------- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 28px;
+}
+.panel.is-hidden { display: none; }
+.panel__title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 24px;
+  margin: 0 0 6px;
+}
+.panel__sub {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+/* ---------- Trip type chips ---------- */
+.trip-type {
+  border: none;
+  padding: 0;
+  margin: 0 0 20px;
+  display: flex;
+  gap: 8px;
+}
+.trip-type legend {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+.chip {
+  position: relative;
+  cursor: pointer;
+}
+.chip input { position: absolute; opacity: 0; }
+.chip span {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  transition: all 0.15s ease;
+}
+.chip input:checked + span {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
+}
+
+/* ---------- Dropzone ---------- */
+.dropzone {
+  display: block;
+  position: relative;
+  border: 2px dashed #B9C2D0;
+  border-radius: var(--radius);
+  padding: 30px 20px;
+  text-align: center;
+  cursor: pointer;
+  background:
+    radial-gradient(circle, transparent 0, transparent 5px, var(--bg) 5px) 0 -6px / 16px 16px repeat-x,
+    var(--surface);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.dropzone:hover, .dropzone.is-dragover {
+  border-color: var(--amber-deep);
+}
+.dropzone__body strong {
+  display: block;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+.dropzone__body span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ---------- Thumbnails ---------- */
+.thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+.thumb {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb__remove {
+  position: absolute;
+  top: 3px; right: 3px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: rgba(16,35,63,0.85);
+  color: #fff;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  border-radius: 999px;
+  padding: 12px 24px;
+  border: none;
+  cursor: pointer;
+  margin-top: 8px;
+  margin-right: 10px;
+  transition: transform 0.1s ease, opacity 0.15s ease;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn--primary {
+  background: var(--amber);
+  color: var(--navy-deep);
+}
+.btn--primary:not(:disabled):hover { transform: translateY(-1px); }
+.btn--ghost {
+  background: transparent;
+  color: var(--navy);
+  border: 1px solid var(--line);
+}
+
+.error {
+  color: #B3261E;
+  font-size: 13px;
+  margin-top: 10px;
+  min-height: 16px;
+}
+
+/* ---------- Segments (review step) ---------- */
+.segments { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
+.seg-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: #FAFBFD;
+}
+.seg-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.seg-card__route {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  font-size: 16px;
+  background: var(--navy);
+  color: var(--amber);
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 1px;
+}
+.seg-card__idx {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.seg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.seg-field label {
+  display: block;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.seg-field input {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12.5px;
+  background: #fff;
+}
+.seg-field input:focus { outline: 2px solid var(--amber-deep); outline-offset: 1px; }
+
+/* ---------- Name field ---------- */
+.field { display: block; margin-bottom: 20px; }
+.field span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+.field input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px;
+}
+.field input:focus { outline: 2px solid var(--amber-deep); outline-offset: 1px; }
+
+/* ---------- WhatsApp message output ---------- */
+.msg-output {
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--line);
+}
+.msg-output.is-hidden { display: none; }
+.field textarea {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  background: #FAFBFD;
+  color: var(--ink);
+}
+.field textarea:focus { outline: 2px solid var(--amber-deep); outline-offset: 1px; }
+#whatsappBtn {
+  display: inline-block;
+  text-decoration: none;
+  background: #25D366;
+  color: #06381F;
+}
+
+@media (max-width: 520px) {
+  .steps { flex-wrap: wrap; }
+  .panel { padding: 20px; }
+}

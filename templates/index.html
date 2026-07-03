@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Itinerary Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="board-header">
+  <div class="board-header__inner">
+    <div class="brand">
+      <span class="brand__mark">✈</span>
+      <span class="brand__name">Itinerary Builder</span>
+    </div>
+    <div class="brand__tag">Screenshot → WhatsApp</div>
+  </div>
+  <div class="board-header__ticker" aria-hidden="true">
+    <span>SCREENSHOT → PARSE → WHATSAPP&nbsp;&nbsp;&nbsp;</span>
+    <span>SCREENSHOT → PARSE → WHATSAPP&nbsp;&nbsp;&nbsp;</span>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <ol class="steps" id="steps">
+    <li class="step is-active" data-step="1"><span class="step__num">01</span><span class="step__label">Upload</span></li>
+    <li class="step" data-step="2"><span class="step__num">02</span><span class="step__label">Review</span></li>
+    <li class="step" data-step="3"><span class="step__num">03</span><span class="step__label">Generate</span></li>
+  </ol>
+
+  <!-- STEP 1: UPLOAD -->
+  <section class="panel" id="panel-upload">
+    <h1 class="panel__title">Add flight screenshots</h1>
+    <p class="panel__sub">One-way, round trip, or multi-city — upload every screenshot for the trip and we'll read the details off them.</p>
+
+    <fieldset class="trip-type">
+      <legend>Trip type</legend>
+      <label class="chip"><input type="radio" name="trip_type" value="One Way" checked><span>One Way</span></label>
+      <label class="chip"><input type="radio" name="trip_type" value="Round Trip"><span>Round Trip</span></label>
+      <label class="chip"><input type="radio" name="trip_type" value="Multi-City"><span>Multi-City</span></label>
+    </fieldset>
+
+    <label class="dropzone" id="dropzone" for="fileInput">
+      <div class="dropzone__perforation" aria-hidden="true"></div>
+      <div class="dropzone__body">
+        <strong>Drop screenshots here</strong>
+        <span>or click to browse — PNG / JPG / WEBP</span>
+      </div>
+    </label>
+    <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.webp" multiple hidden>
+
+    <div class="thumbs" id="thumbs"></div>
+
+    <button class="btn btn--primary" id="extractBtn" disabled>Read flight details</button>
+    <p class="error" id="uploadError"></p>
+  </section>
+
+  <!-- STEP 2: REVIEW -->
+  <section class="panel is-hidden" id="panel-review">
+    <h1 class="panel__title">Review extracted segments</h1>
+    <p class="panel__sub">Check each leg against the screenshot. Edit anything the model got wrong before generating the PDF.</p>
+
+    <div id="segmentsList" class="segments"></div>
+
+    <button class="btn btn--ghost" id="backToUpload">← Add more / start over</button>
+    <button class="btn btn--primary" id="toNameBtn">Continue</button>
+  </section>
+
+  <!-- STEP 3: GENERATE -->
+  <section class="panel is-hidden" id="panel-generate">
+    <h1 class="panel__title">Passenger &amp; message</h1>
+    <p class="panel__sub">Enter the traveller's name, then generate a short summary ready to paste or send on WhatsApp.</p>
+
+    <label class="field">
+      <span>Passenger name</span>
+      <input type="text" id="passengerName" placeholder="e.g. K. A. Perera">
+    </label>
+
+    <button class="btn btn--ghost" id="backToReview">← Back to review</button>
+    <button class="btn btn--primary" id="generateBtn">Generate WhatsApp message</button>
+    <p class="error" id="generateError"></p>
+
+    <div class="msg-output is-hidden" id="msgOutput">
+      <label class="field">
+        <span>Message preview</span>
+        <textarea id="msgText" rows="10" readonly></textarea>
+      </label>
+      <button class="btn btn--ghost" id="copyBtn">Copy text</button>
+      <a class="btn btn--primary" id="whatsappBtn" href="#" target="_blank" rel="noopener">Open in WhatsApp</a>
+    </div>
+  </section>
+
+</main>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
