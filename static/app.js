@@ -68,10 +68,29 @@ dropzone.addEventListener("drop", (e) => {
 });
 fileInput.addEventListener("change", (e) => addFiles(e.target.files));
 
+const ACCEPTED_EXT = ["png", "jpg", "jpeg", "webp"];
+
+function getExt(filename) {
+  const m = (filename || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : "";
+}
+
 function addFiles(fileList) {
+  const rejected = [];
   [...fileList].forEach((f) => {
-    if (/^image\/(png|jpe?g|webp)$/.test(f.type)) state.files.push(f);
+    const typeOk = /^image\/(png|jpe?g|webp)$/i.test(f.type || "");
+    const extOk = ACCEPTED_EXT.includes(getExt(f.name));
+    // Mobile browsers/cloud photo pickers often report an empty or generic
+    // f.type, so fall back to the file extension rather than rejecting it.
+    if (typeOk || extOk) {
+      state.files.push(f);
+    } else {
+      rejected.push(f.name || "unnamed file");
+    }
   });
+  uploadError.textContent = rejected.length
+    ? `Skipped ${rejected.length} file(s) — only PNG, JPG, and WEBP are supported: ${rejected.join(", ")}`
+    : "";
   renderThumbs();
 }
 
