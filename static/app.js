@@ -1,163 +1,316 @@
-import os
-import time
-import uuid
-from flask import Flask, request, jsonify, render_template, send_file, after_this_request
-from werkzeug.utils import secure_filename
-from dotenv import load_dotenv
+const ACCEPTED_EXT = ["png", "jpg", "jpeg", "webp"];
 
-load_dotenv()
+function getExt(filename) {
+  const m = (filename || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : "";
+}
 
-from extract import extract_segments_from_images
-from text_gen import build_whatsapp_message
-from pdf_gen import generate_itinerary_pdf, build_output_filename
+/** Filters a FileList into accepted images, reports rejects via errorEl. */
+function filterFiles(fileList, errorEl) {
+  const accepted = [];
+  const rejected = [];
+  [...fileList].forEach((f) => {
+    const typeOk = /^image\/(png|jpe?g|webp)$/i.test(f.type || "");
+    const extOk = ACCEPTED_EXT.includes(getExt(f.name));
+    // Mobile browsers/cloud photo pickers often report an empty or generic
+    // f.type, so fall back to the file extension rather than rejecting it.
+    if (typeOk || extOk) accepted.push(f);
+    else rejected.push(f.name || "unnamed file");
+  });
+  errorEl.textContent = rejected.length
+    ? `Skipped ${rejected.length} file(s) — only PNG, JPG, and WEBP are supported: ${rejected.join(", ")}`
+    : "";
+  return accepted;
+}
 
-app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
-app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB total upload cap
+/** Renders thumbnails for a list of File objects into a container, wiring up
+ * per-thumb remove buttons that splice the backing array and re-render. */
+function renderThumbs(container, files, onChange) {
+  container.innerHTML = "";
+  files.forEach((f, i) => {
+    const div = document.createElement("div");
+    div.className = "thumb";
+    const img = document.createElement("img");
+    img.src = URL.createObjectURL(f);
+    const btn = document.createElement("button");
+    btn.className = "thumb__remove";
+    btn.textContent = "✕";
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      files.splice(i, 1);
+      onChange();
+    };
+    div.appendChild(img);
+    div.appendChild(btn);
+    container.appendChild(div);
+  });
+}
 
-# Bumps once per process start (i.e. every deploy/restart), used as a
-# cache-busting query string on static assets so phones/browsers don't keep
-# serving a stale app.js or style.css after we ship a fix.
-ASSET_VERSION = str(int(time.time()))
+/** Safely parses a fetch Response as JSON, throwing a readable error instead
+ * of a cryptic "Unexpected token '<'" if the server returned an HTML error
+ * page (e.g. a 413 Payload Too Large or an unhandled 500). */
+async function parseJsonResponse(res) {
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    if (res.status === 413) {
+      throw new Error("Upload too large — try fewer or smaller screenshots.");
+    }
+    throw new Error(`Server error (status ${res.status}). Please try again.`);
+  }
+  return res.json();
+}
 
+function wireDropzone(dropzone, fileInput, onFiles) {
+  // Note: dropzone is a <label for="..."> pointing at fileInput, so clicking
+  // it already opens the file picker natively — no extra JS click handler
+  // needed (adding one caused the picker to double-fire and reopen on mobile).
+  dropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropzone.classList.add("is-dragover");
+  });
+  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("is-dragover"));
+  dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("is-dragover");
+    onFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener("change", (e) => onFiles(e.target.files));
+}
 
-@app.context_processor
-def inject_asset_version():
-    return {"asset_version": ASSET_VERSION}
+// =====================================================================
+// Tabs
+// =====================================================================
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("is-active"));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.add("is-hidden"));
+    btn.classList.add("is-active");
+    document.getElementById(`tab-${btn.dataset.tab}`).classList.remove("is-hidden");
+  });
+});
 
+// =====================================================================
+// WhatsApp tab — one click: upload -> extract -> message
+// =====================================================================
+(() => {
+  const state = { files: [], tripType: "One Way" };
 
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "tmp_uploads")
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "tmp_output")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("fileInput");
+  const thumbs = document.getElementById("thumbs");
+  const generateBtn = document.getElementById("generateBtn");
+  const uploadError = document.getElementById("uploadError");
+  const msgOutput = document.getElementById("msgOutput");
+  const msgText = document.getElementById("msgText");
+  const copyBtn = document.getElementById("copyBtn");
+  const whatsappBtn = document.getElementById("whatsappBtn");
 
-ALLOWED_EXT = {"png", "jpg", "jpeg", "webp"}
+  document.querySelectorAll('input[name="trip_type"]').forEach((el) => {
+    el.addEventListener("change", (e) => (state.tripType = e.target.value));
+  });
 
+  function refreshThumbs() {
+    renderThumbs(thumbs, state.files, refreshThumbs);
+    generateBtn.disabled = state.files.length === 0;
+  }
 
-def _allowed(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
+  wireDropzone(dropzone, fileInput, (fileList) => {
+    state.files.push(...filterFiles(fileList, uploadError));
+    refreshThumbs();
+  });
 
+  generateBtn.addEventListener("click", async () => {
+    uploadError.textContent = "";
+    msgOutput.classList.add("is-hidden");
+    generateBtn.disabled = true;
+    generateBtn.textContent = "Reading images…";
 
-@app.errorhandler(413)
-def too_large(e):
-    mb = app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
-    return jsonify({"error": f"Upload too large — total size must be under {mb}MB. Try fewer or smaller screenshots."}), 413
+    const formData = new FormData();
+    formData.append("trip_type", state.tripType);
+    state.files.forEach((f) => formData.append("images", f));
 
+    try {
+      const res = await fetch("/generate", { method: "POST", body: formData });
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || "Could not generate message.");
 
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({"error": "Not found."}), 404
+      msgText.value = data.message;
+      whatsappBtn.href = `https://wa.me/?text=${encodeURIComponent(data.message)}`;
+      msgOutput.classList.remove("is-hidden");
+    } catch (err) {
+      uploadError.textContent = err.message;
+    } finally {
+      generateBtn.disabled = state.files.length === 0;
+      generateBtn.textContent = "Generate WhatsApp message";
+    }
+  });
 
+  copyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(msgText.value);
+      const original = copyBtn.textContent;
+      copyBtn.textContent = "Copied ✓";
+      setTimeout(() => (copyBtn.textContent = original), 1500);
+    } catch {
+      msgText.select();
+      document.execCommand("copy");
+    }
+  });
+})();
 
-@app.errorhandler(500)
-def server_error(e):
-    return jsonify({"error": "Something went wrong on the server. Please try again."}), 500
+// =====================================================================
+// PDF tab — upload -> extract -> review/edit -> generate PDF
+// =====================================================================
+(() => {
+  const state = { files: [], tripType: "One Way", segments: [] };
 
+  const dropzone = document.getElementById("pdfDropzone");
+  const fileInput = document.getElementById("pdfFileInput");
+  const thumbs = document.getElementById("pdfThumbs");
+  const extractBtn = document.getElementById("pdfExtractBtn");
+  const uploadError = document.getElementById("pdfUploadError");
+  const review = document.getElementById("pdfReview");
+  const segmentsList = document.getElementById("pdfSegmentsList");
+  const passengerName = document.getElementById("pdfPassengerName");
+  const generateBtn = document.getElementById("pdfGenerateBtn");
+  const generateError = document.getElementById("pdfGenerateError");
 
-def _save_uploaded_images(files):
-    """Saves valid uploaded images to disk, returns the list of saved paths.
-    Caller is responsible for deleting them afterwards."""
-    session_id = uuid.uuid4().hex[:12]
-    saved_paths = []
-    for f in files:
-        if f and _allowed(f.filename):
-            fname = f"{session_id}_{secure_filename(f.filename)}"
-            path = os.path.join(UPLOAD_DIR, fname)
-            f.save(path)
-            saved_paths.append(path)
-    return saved_paths
+  const SEGMENT_FIELDS = [
+    ["airline", "Airline"],
+    ["flight_number", "Flight #"],
+    ["cabin_class", "Class"],
+    ["departure_airport_code", "From"],
+    ["departure_city", "Dep. City"],
+    ["departure_date", "Dep. Date"],
+    ["departure_time", "Dep. Time"],
+    ["departure_terminal", "Dep. Terminal"],
+    ["arrival_airport_code", "To"],
+    ["arrival_city", "Arr. City"],
+    ["arrival_date", "Arr. Date"],
+    ["arrival_time", "Arr. Time"],
+    ["arrival_terminal", "Arr. Terminal"],
+    ["duration", "Duration"],
+    ["stops", "Stops"],
+    ["baggage", "Baggage"],
+    ["pnr", "PNR"],
+    ["seat", "Seat"],
+  ];
 
+  document.querySelectorAll('input[name="pdf_trip_type"]').forEach((el) => {
+    el.addEventListener("change", (e) => (state.tripType = e.target.value));
+  });
 
-def _cleanup(paths):
-    for p in paths:
-        try:
-            os.remove(p)
-        except OSError:
-            pass
+  function refreshThumbs() {
+    renderThumbs(thumbs, state.files, refreshThumbs);
+    extractBtn.disabled = state.files.length === 0;
+  }
 
+  wireDropzone(dropzone, fileInput, (fileList) => {
+    state.files.push(...filterFiles(fileList, uploadError));
+    refreshThumbs();
+  });
 
-@app.route("/")
-def index():
-    return render_template("index.html")
+  extractBtn.addEventListener("click", async () => {
+    uploadError.textContent = "";
+    review.classList.add("is-hidden");
+    extractBtn.disabled = true;
+    extractBtn.textContent = "Reading images…";
 
+    const formData = new FormData();
+    formData.append("trip_type", state.tripType);
+    state.files.forEach((f) => formData.append("images", f));
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    """One-click WhatsApp flow: upload -> extract -> message, no review step."""
-    trip_type = request.form.get("trip_type", "One Way")
-    files = request.files.getlist("images")
+    try {
+      const res = await fetch("/extract", { method: "POST", body: formData });
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || "Extraction failed.");
 
-    if not files:
-        return jsonify({"error": "No images uploaded."}), 400
+      state.segments = data.segments;
+      renderSegments();
+      review.classList.remove("is-hidden");
+    } catch (err) {
+      uploadError.textContent = err.message;
+    } finally {
+      extractBtn.disabled = state.files.length === 0;
+      extractBtn.textContent = "Read flight details";
+    }
+  });
 
-    saved_paths = _save_uploaded_images(files)
-    try:
-        if not saved_paths:
-            return jsonify({"error": "No valid image files (png/jpg/webp) found."}), 400
+  function renderSegments() {
+    segmentsList.innerHTML = "";
+    state.segments.forEach((seg, idx) => {
+      const card = document.createElement("div");
+      card.className = "seg-card";
 
-        segments = extract_segments_from_images(saved_paths)
-        if not segments:
-            return jsonify({"error": "No flight details could be read from those images. Try clearer screenshots."}), 422
+      const head = document.createElement("div");
+      head.className = "seg-card__head";
+      head.innerHTML = `
+        <span class="seg-card__route">${seg.departure_airport_code || "---"} → ${seg.arrival_airport_code || "---"}</span>
+        <span class="seg-card__idx">Flight ${idx + 1} of ${state.segments.length}</span>
+      `;
+      card.appendChild(head);
 
-        message = build_whatsapp_message(trip_type, segments)
-        return jsonify({"message": message})
-    finally:
-        _cleanup(saved_paths)
+      const grid = document.createElement("div");
+      grid.className = "seg-grid";
+      SEGMENT_FIELDS.forEach(([key, label]) => {
+        const field = document.createElement("div");
+        field.className = "seg-field";
+        field.innerHTML = `<label>${label}</label>`;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = seg[key] || "";
+        input.addEventListener("input", (e) => {
+          state.segments[idx][key] = e.target.value;
+          if (key === "departure_airport_code" || key === "arrival_airport_code") {
+            head.querySelector(".seg-card__route").textContent =
+              `${state.segments[idx].departure_airport_code || "---"} → ${state.segments[idx].arrival_airport_code || "---"}`;
+          }
+        });
+        field.appendChild(input);
+        grid.appendChild(field);
+      });
+      card.appendChild(grid);
+      segmentsList.appendChild(card);
+    });
+  }
 
+  generateBtn.addEventListener("click", async () => {
+    generateError.textContent = "";
+    generateBtn.disabled = true;
+    generateBtn.textContent = "Building PDF…";
 
-@app.route("/extract", methods=["POST"])
-def extract():
-    """PDF flow, step 1: upload -> extract -> editable segments for review."""
-    trip_type = request.form.get("trip_type", "One Way")
-    files = request.files.getlist("images")
+    try {
+      const res = await fetch("/generate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          passenger_name: passengerName.value.trim() || "Passenger",
+          trip_type: state.tripType,
+          segments: state.segments,
+        }),
+      });
+      if (!res.ok) {
+        const data = await parseJsonResponse(res);
+        throw new Error(data.error || "Could not generate PDF.");
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match ? match[1] : "itinerary.pdf";
 
-    if not files:
-        return jsonify({"error": "No images uploaded."}), 400
-
-    saved_paths = _save_uploaded_images(files)
-    try:
-        if not saved_paths:
-            return jsonify({"error": "No valid image files (png/jpg/webp) found."}), 400
-
-        segments = extract_segments_from_images(saved_paths)
-        if not segments:
-            return jsonify({"error": "No flight details could be read from those images. Try clearer screenshots."}), 422
-
-        return jsonify({"trip_type": trip_type, "segments": segments})
-    finally:
-        _cleanup(saved_paths)
-
-
-@app.route("/generate-pdf", methods=["POST"])
-def generate_pdf():
-    """PDF flow, step 2: edited segments + passenger name -> itinerary PDF."""
-    data = request.get_json(force=True)
-    passenger_name = (data.get("passenger_name") or "").strip() or "Passenger"
-    trip_type = data.get("trip_type", "One Way")
-    segments = data.get("segments", [])
-
-    if not segments:
-        return jsonify({"error": "No flight segments to build an itinerary from."}), 400
-
-    out_name = build_output_filename(passenger_name, segments)
-    out_path = os.path.join(OUTPUT_DIR, f"{uuid.uuid4().hex[:8]}_{out_name}")
-    generate_itinerary_pdf(out_path, passenger_name, trip_type, segments)
-
-    @after_this_request
-    def _remove_pdf(response):
-        try:
-            os.remove(out_path)
-        except OSError:
-            pass
-        return response
-
-    return send_file(
-        out_path,
-        as_attachment=True,
-        download_name=out_name,
-        mimetype="application/pdf",
-    )
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      generateError.textContent = err.message;
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.textContent = "Generate itinerary PDF";
+    }
+  });
+})();
