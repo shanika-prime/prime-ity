@@ -10,7 +10,10 @@ import os
 import re
 import json
 import base64
+import logging
 from groq import Groq
+
+logger = logging.getLogger(__name__)
 
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.6-27b")
@@ -70,24 +73,30 @@ def _strip_json_fences(text: str) -> str:
 
 def extract_segments_from_image(image_path: str) -> list:
     """Sends one image to the Groq vision model and returns a list of
-    segment dicts (possibly empty on failure)."""
-    data_url = _image_to_data_url(image_path)
+    segment dicts (empty list on any failure — logged, never raised, so one
+    bad image/API hiccup doesn't crash the whole request)."""
+    try:
+        data_url = _image_to_data_url(image_path)
 
-    completion = client.chat.completions.create(
-        model=VISION_MODEL,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": SEGMENT_SCHEMA_HINT},
-                    {"type": "image_url", "image_url": {"url": data_url}},
-                ],
-            }
-        ],
-        temperature=0.1,
-        max_completion_tokens=2048,
-        response_format={"type": "json_object"},
-    )
+        completion = client.chat.completions.create(
+            model=VISION_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": SEGMENT_SCHEMA_HINT},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                }
+            ],
+            temperature=0.1,
+            max_completion_tokens=2048,
+            response_format={"type": "json_object"},
+            reasoning_effort="none",  # skip "thinking" mode - we want fast, deterministic JSON, not reasoning tokens eating the token budget
+        )
+    except Exception:
+        logger.exception("Groq vision extraction failed for %s", image_path)
+        return []
 
     raw = completion.choices[0].message.content
     cleaned = _strip_json_fences(raw)
@@ -99,6 +108,7 @@ def extract_segments_from_image(image_path: str) -> list:
             segments = [segments]
         return segments
     except (json.JSONDecodeError, AttributeError):
+        logger.warning("Could not parse JSON from Groq response for %s: %r", image_path, raw)
         return []
 
 
