@@ -26,16 +26,15 @@
 
 <main class="wrap">
 
-  <ol class="steps" id="steps">
-    <li class="step is-active" data-step="1"><span class="step__num">01</span><span class="step__label">Upload</span></li>
-    <li class="step" data-step="2"><span class="step__num">02</span><span class="step__label">Review</span></li>
-    <li class="step" data-step="3"><span class="step__num">03</span><span class="step__label">Generate</span></li>
-  </ol>
+  <div class="tabs" id="tabs">
+    <button class="tab-btn is-active" data-tab="whatsapp" type="button">WhatsApp</button>
+    <button class="tab-btn" data-tab="pdf" type="button">PDF</button>
+  </div>
 
-  <!-- STEP 1: UPLOAD -->
-  <section class="panel" id="panel-upload">
+  <!-- ============ WHATSAPP TAB ============ -->
+  <section class="panel tab-panel" id="tab-whatsapp">
     <h1 class="panel__title">Add flight screenshots</h1>
-    <p class="panel__sub">One-way, round trip, or multi-city — upload every screenshot for the trip and we'll read the details off them.</p>
+    <p class="panel__sub">One-way, round trip, or multi-city — upload every screenshot for the trip and generate a WhatsApp-ready message in one click.</p>
 
     <fieldset class="trip-type">
       <legend>Trip type</legend>
@@ -55,34 +54,8 @@
 
     <div class="thumbs" id="thumbs"></div>
 
-    <button class="btn btn--primary" id="extractBtn" disabled>Read flight details</button>
+    <button class="btn btn--primary" id="generateBtn" disabled>Generate WhatsApp message</button>
     <p class="error" id="uploadError"></p>
-  </section>
-
-  <!-- STEP 2: REVIEW -->
-  <section class="panel is-hidden" id="panel-review">
-    <h1 class="panel__title">Review extracted segments</h1>
-    <p class="panel__sub">Check each leg against the screenshot. Edit anything the model got wrong before generating the PDF.</p>
-
-    <div id="segmentsList" class="segments"></div>
-
-    <button class="btn btn--ghost" id="backToUpload">← Add more / start over</button>
-    <button class="btn btn--primary" id="toNameBtn">Continue</button>
-  </section>
-
-  <!-- STEP 3: GENERATE -->
-  <section class="panel is-hidden" id="panel-generate">
-    <h1 class="panel__title">Passenger &amp; message</h1>
-    <p class="panel__sub">Enter the traveller's name, then generate a short summary ready to paste or send on WhatsApp.</p>
-
-    <label class="field">
-      <span>Passenger name</span>
-      <input type="text" id="passengerName" placeholder="e.g. K. A. Perera">
-    </label>
-
-    <button class="btn btn--ghost" id="backToReview">← Back to review</button>
-    <button class="btn btn--primary" id="generateBtn">Generate WhatsApp message</button>
-    <p class="error" id="generateError"></p>
 
     <div class="msg-output is-hidden" id="msgOutput">
       <label class="field">
@@ -91,6 +64,48 @@
       </label>
       <button class="btn btn--ghost" id="copyBtn">Copy text</button>
       <a class="btn btn--primary" id="whatsappBtn" href="#" target="_blank" rel="noopener">Open in WhatsApp</a>
+    </div>
+  </section>
+
+  <!-- ============ PDF TAB ============ -->
+  <section class="panel tab-panel is-hidden" id="tab-pdf">
+    <h1 class="panel__title">Add flight screenshots</h1>
+    <p class="panel__sub">Upload screenshots, review and edit the extracted details, then generate a travel itinerary PDF for your passenger.</p>
+
+    <fieldset class="trip-type">
+      <legend>Trip type</legend>
+      <label class="chip"><input type="radio" name="pdf_trip_type" value="One Way" checked><span>One Way</span></label>
+      <label class="chip"><input type="radio" name="pdf_trip_type" value="Round Trip"><span>Round Trip</span></label>
+      <label class="chip"><input type="radio" name="pdf_trip_type" value="Multi-City"><span>Multi-City</span></label>
+    </fieldset>
+
+    <label class="dropzone" id="pdfDropzone" for="pdfFileInput">
+      <div class="dropzone__perforation" aria-hidden="true"></div>
+      <div class="dropzone__body">
+        <strong>Drop screenshots here</strong>
+        <span>or click to browse — PNG / JPG / WEBP</span>
+      </div>
+    </label>
+    <input type="file" id="pdfFileInput" accept="image/*" multiple hidden>
+
+    <div class="thumbs" id="pdfThumbs"></div>
+
+    <button class="btn btn--primary" id="pdfExtractBtn" disabled>Read flight details</button>
+    <p class="error" id="pdfUploadError"></p>
+
+    <div class="pdf-review is-hidden" id="pdfReview">
+      <h2 class="panel__title" style="font-size:18px;">Review extracted details</h2>
+      <p class="panel__sub">Check each flight against the screenshot — edit anything before generating the PDF.</p>
+
+      <div id="pdfSegmentsList" class="segments"></div>
+
+      <label class="field">
+        <span>Passenger name</span>
+        <input type="text" id="pdfPassengerName" placeholder="Passenger" value="Passenger">
+      </label>
+
+      <button class="btn btn--primary" id="pdfGenerateBtn">Generate itinerary PDF</button>
+      <p class="error" id="pdfGenerateError"></p>
     </div>
   </section>
 
