@@ -70,7 +70,12 @@ def _leg_block(seg: dict, index: int, total: int) -> str:
         lines.append(date_time_line)
 
     if stops:
-        lines.append(stops)
+        if "layover" in stops.lower():
+            lines.append("..........")
+            lines.append(stops)
+            lines.append("..........")
+        else:
+            lines.append(stops)
     if cabin:
         lines.append(cabin)
 
