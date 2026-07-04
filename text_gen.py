@@ -23,21 +23,33 @@ def _fmt_date(d: str) -> str:
         return d
 
 
-def _leg_block(seg: dict, index: int, total: int) -> str:
-    dep_code = seg.get("departure_airport_code", "") or "?"
-    arr_code = seg.get("arrival_airport_code", "") or "?"
-    airline = seg.get("airline", "")
-    flight_no = seg.get("flight_number", "")
-    dep_date = _fmt_date(seg.get("departure_date", ""))
-    dep_time = seg.get("departure_time", "")
-    arr_time = seg.get("arrival_time", "")
-    arr_date = _fmt_date(seg.get("arrival_date", ""))
-    stops = seg.get("stops", "") or "Non-stop"
-    cabin = seg.get("cabin_class", "")
-    baggage = seg.get("baggage", "")
-    pnr = seg.get("pnr", "")
+def _s(value) -> str:
+    """Coerces any value to a plain string. The model is asked to return
+    strings for every field, but isn't 100% reliable — if it ever returns a
+    number, list, or nested object instead, this stops that from crashing
+    string formatting (e.g. str.join()) downstream."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
 
-    header = f"*Leg {index}: {dep_code} → {arr_code}*" if total > 1 else f"*{dep_code} → {arr_code}*"
+
+def _leg_block(seg: dict, index: int, total: int) -> str:
+    dep_code = _s(seg.get("departure_airport_code")) or "?"
+    arr_code = _s(seg.get("arrival_airport_code")) or "?"
+    airline = _s(seg.get("airline"))
+    flight_no = _s(seg.get("flight_number"))
+    dep_date = _fmt_date(_s(seg.get("departure_date")))
+    dep_time = _s(seg.get("departure_time"))
+    arr_time = _s(seg.get("arrival_time"))
+    arr_date = _fmt_date(_s(seg.get("arrival_date")))
+    stops = _s(seg.get("stops")) or "Non-stop"
+    cabin = _s(seg.get("cabin_class"))
+    baggage = _s(seg.get("baggage"))
+    pnr = _s(seg.get("pnr"))
+
+    header = f"*Flight {index}: {dep_code} → {arr_code}*" if total > 1 else f"*{dep_code} → {arr_code}*"
     lines = [header]
 
     line1 = " | ".join([p for p in [airline, flight_no] if p])
@@ -64,8 +76,8 @@ def _leg_block(seg: dict, index: int, total: int) -> str:
     return "\n".join(lines)
 
 
-def build_whatsapp_message(passenger_name: str, trip_type: str, segments: list) -> str:
-    parts = [f"*Flight Itinerary – {passenger_name}*", f"Trip: {trip_type}", ""]
+def build_whatsapp_message(trip_type: str, segments: list) -> str:
+    parts = ["*Flight Details*", f"Trip: {trip_type}", ""]
     total = len(segments)
     for i, seg in enumerate(segments, start=1):
         parts.append(_leg_block(seg, i, total))
