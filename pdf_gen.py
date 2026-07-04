@@ -43,13 +43,25 @@ styles.add(ParagraphStyle(name="FooterNote", fontSize=8, leading=10,
                            textColor=TEXT_GREY))
 
 
+def _s(value) -> str:
+    """Coerces any value to a plain string. The model is asked to return
+    strings for every field, but isn't 100% reliable — if it ever returns a
+    number, list, or nested object instead, this stops that from crashing
+    ReportLab's Paragraph() (which requires a str) or string formatting."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
 def _segment_card(seg: dict, index: int, total: int) -> Table:
-    dep_code = seg.get("departure_airport_code", "") or "---"
-    arr_code = seg.get("arrival_airport_code", "") or "---"
-    dep_city = seg.get("departure_city", "")
-    arr_city = seg.get("arrival_city", "")
-    airline = seg.get("airline", "")
-    flight_no = seg.get("flight_number", "")
+    dep_code = _s(seg.get("departure_airport_code")) or "---"
+    arr_code = _s(seg.get("arrival_airport_code")) or "---"
+    dep_city = _s(seg.get("departure_city"))
+    arr_city = _s(seg.get("arrival_city"))
+    airline = _s(seg.get("airline"))
+    flight_no = _s(seg.get("flight_number"))
 
     tag_text = f"FLIGHT {index} OF {total}" if total > 1 else "FLIGHT"
     seg_header = Table(
@@ -70,21 +82,21 @@ def _segment_card(seg: dict, index: int, total: int) -> Table:
 
     left_col = [
         Paragraph("DEPARTS", styles["LabelSmall"]),
-        Paragraph(f"{seg.get('departure_date','') or '-'}", styles["ValueMed"]),
-        Paragraph(f"{seg.get('departure_time','') or '-'}", styles["ValueMed"]),
-        Paragraph(f"Terminal {seg.get('departure_terminal','') or '-'}", styles["MetaLine"]),
+        Paragraph(_s(seg.get("departure_date")) or "-", styles["ValueMed"]),
+        Paragraph(_s(seg.get("departure_time")) or "-", styles["ValueMed"]),
+        Paragraph(f"Terminal {_s(seg.get('departure_terminal')) or '-'}", styles["MetaLine"]),
     ]
     mid_col = [
         Paragraph("DURATION", styles["LabelSmall"]),
-        Paragraph(seg.get("duration", "") or "-", styles["ValueMed"]),
-        Paragraph(seg.get("stops", "") or "Non-stop", styles["MetaLine"]),
-        Paragraph(seg.get("cabin_class", "") or "-", styles["MetaLine"]),
+        Paragraph(_s(seg.get("duration")) or "-", styles["ValueMed"]),
+        Paragraph(_s(seg.get("stops")) or "Non-stop", styles["MetaLine"]),
+        Paragraph(_s(seg.get("cabin_class")) or "-", styles["MetaLine"]),
     ]
     right_col = [
         Paragraph("ARRIVES", styles["LabelSmall"]),
-        Paragraph(f"{seg.get('arrival_date','') or '-'}", styles["ValueMed"]),
-        Paragraph(f"{seg.get('arrival_time','') or '-'}", styles["ValueMed"]),
-        Paragraph(f"Terminal {seg.get('arrival_terminal','') or '-'}", styles["MetaLine"]),
+        Paragraph(_s(seg.get("arrival_date")) or "-", styles["ValueMed"]),
+        Paragraph(_s(seg.get("arrival_time")) or "-", styles["ValueMed"]),
+        Paragraph(f"Terminal {_s(seg.get('arrival_terminal')) or '-'}", styles["MetaLine"]),
     ]
 
     body_grid = Table(
