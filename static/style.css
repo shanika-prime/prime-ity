@@ -84,6 +84,32 @@ body {
   padding: 36px 24px 80px;
 }
 
+/* ---------- Tabs ---------- */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.tab-btn {
+  flex: 1;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.tab-btn.is-active {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
+}
+.tab-panel.is-hidden { display: none; }
+
 /* ---------- Steps ---------- */
 .steps {
   display: flex;
@@ -346,6 +372,12 @@ body {
   border-top: 1px dashed var(--line);
 }
 .msg-output.is-hidden { display: none; }
+.pdf-review {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px dashed var(--line);
+}
+.pdf-review.is-hidden { display: none; }
 .field textarea {
   width: 100%;
   padding: 14px;
