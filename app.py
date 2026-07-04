@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 from flask import Flask, request, jsonify, render_template, send_file, after_this_request
 from werkzeug.utils import secure_filename
@@ -14,6 +15,17 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25MB total upload cap
 
+# Bumps once per process start (i.e. every deploy/restart), used as a
+# cache-busting query string on static assets so phones/browsers don't keep
+# serving a stale app.js or style.css after we ship a fix.
+ASSET_VERSION = str(int(time.time()))
+
+
+@app.context_processor
+def inject_asset_version():
+    return {"asset_version": ASSET_VERSION}
+
+
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "tmp_uploads")
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "tmp_output")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -24,6 +36,22 @@ ALLOWED_EXT = {"png", "jpg", "jpeg", "webp"}
 
 def _allowed(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
+
+
+@app.errorhandler(413)
+def too_large(e):
+    mb = app.config["MAX_CONTENT_LENGTH"] // (1024 * 1024)
+    return jsonify({"error": f"Upload too large — total size must be under {mb}MB. Try fewer or smaller screenshots."}), 413
+
+
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"error": "Not found."}), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    return jsonify({"error": "Something went wrong on the server. Please try again."}), 500
 
 
 def _save_uploaded_images(files):
