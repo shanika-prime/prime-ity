@@ -130,18 +130,24 @@ def extract():
 
 @app.route("/generate-pdf", methods=["POST"])
 def generate_pdf():
-    """PDF flow, step 2: edited segments + passenger name -> itinerary PDF."""
+    """PDF flow, step 2: edited segments + passenger name(s) -> itinerary PDF."""
     data = request.get_json(force=True)
-    passenger_name = (data.get("passenger_name") or "").strip() or "Passenger"
+    passenger_names = data.get("passenger_names")
+    if not isinstance(passenger_names, list):
+        # backward-compatible fallback if a single passenger_name string is sent
+        single = (data.get("passenger_name") or "").strip()
+        passenger_names = [single] if single else []
+    passenger_names = [str(n).strip() for n in passenger_names if str(n).strip()] or ["Passenger"]
+
     trip_type = data.get("trip_type", "One Way")
     segments = data.get("segments", [])
 
     if not segments:
         return jsonify({"error": "No flight segments to build an itinerary from."}), 400
 
-    out_name = build_output_filename(passenger_name, segments)
+    out_name = build_output_filename(passenger_names, segments)
     out_path = os.path.join(OUTPUT_DIR, f"{uuid.uuid4().hex[:8]}_{out_name}")
-    generate_itinerary_pdf(out_path, passenger_name, trip_type, segments)
+    generate_itinerary_pdf(out_path, passenger_names, trip_type, segments)
 
     @after_this_request
     def _remove_pdf(response):
