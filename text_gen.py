@@ -61,11 +61,11 @@ def _leg_block(seg: dict, index: int, total: int) -> str:
     # Overnight/multi-day flights show both dates; same-day flights show one
     # date with a time range, which is more compact and still unambiguous.
     if dep_date and arr_date and dep_date != arr_date:
-        date_time_line = f"📅 {dep_date} {dep_time} → {arr_date} {arr_time}".strip()
+        date_time_line = f"{dep_date} {dep_time} → {arr_date} {arr_time}".strip()
     else:
         date_part = dep_date or arr_date
         time_part = f"{dep_time} → {arr_time}".strip(" →")
-        date_time_line = "  ".join(p for p in [f"📅 {date_part}" if date_part else "", f"🕑 {time_part}" if time_part else ""] if p)
+        date_time_line = "  ".join(p for p in [date_part, f"🕑 {time_part}" if time_part else ""] if p)
     if date_time_line:
         lines.append(date_time_line)
 
