@@ -142,7 +142,7 @@ def _segment_card(seg: dict, index: int, total: int) -> Table:
     return card
 
 
-def generate_itinerary_pdf(output_path: str, passenger_name: str,
+def generate_itinerary_pdf(output_path: str, passenger_names: list,
                             trip_type: str, segments: list) -> str:
     doc = SimpleDocTemplate(
         output_path, pagesize=A4,
@@ -156,7 +156,13 @@ def generate_itinerary_pdf(output_path: str, passenger_name: str,
     story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=1.2, color=NAVY, spaceAfter=10))
 
-    story.append(Paragraph(f"Passenger: <b>{passenger_name}</b>", styles["PaxLine"]))
+    clean_names = [n.strip() for n in passenger_names if n and n.strip()] or ["Passenger"]
+    if len(clean_names) == 1:
+        story.append(Paragraph(f"Passenger: <b>{clean_names[0]}</b>", styles["PaxLine"]))
+    else:
+        story.append(Paragraph(f"Passengers ({len(clean_names)}):", styles["PaxLine"]))
+        for i, name in enumerate(clean_names, start=1):
+            story.append(Paragraph(f"{i}. <b>{name}</b>", styles["PaxLine"]))
     story.append(Spacer(1, 14))
 
     if not segments:
@@ -177,14 +183,16 @@ def generate_itinerary_pdf(output_path: str, passenger_name: str,
     return output_path
 
 
-def build_output_filename(passenger_name: str, segments: list) -> str:
+def build_output_filename(passenger_names: list, segments: list) -> str:
     pnr = ""
     for s in segments:
         if s.get("pnr"):
             pnr = s["pnr"]
             break
-    raw_first = passenger_name.strip().split(" ")[0] if passenger_name.strip() else "PASSENGER"
+    clean_names = [n.strip() for n in passenger_names if n and n.strip()] or ["Passenger"]
+    raw_first = clean_names[0].split(" ")[0] if clean_names[0] else "PASSENGER"
     first_name = re.sub(r"[^A-Za-z0-9]", "", raw_first).upper() or "PASSENGER"
+    suffix = f"_PLUS{len(clean_names) - 1}" if len(clean_names) > 1 else ""
     if pnr:
-        return f"{pnr}_{first_name}.pdf"
-    return f"ITINERARY_{first_name}.pdf"
+        return f"{pnr}_{first_name}{suffix}.pdf"
+    return f"ITINERARY_{first_name}{suffix}.pdf"
