@@ -99,10 +99,11 @@
 
       <div id="pdfSegmentsList" class="segments"></div>
 
-      <label class="field">
-        <span>Passenger name</span>
-        <input type="text" id="pdfPassengerName" placeholder="Passenger" value="Passenger">
-      </label>
+      <div class="pax-block">
+        <span class="pax-block__label">Passenger name(s)</span>
+        <div id="pdfPassengerList" class="pax-list"></div>
+        <button class="btn btn--ghost" id="pdfAddPassengerBtn" type="button">+ Add passenger</button>
+      </div>
 
       <button class="btn btn--primary" id="pdfGenerateBtn">Generate itinerary PDF</button>
       <p class="error" id="pdfGenerateError"></p>
