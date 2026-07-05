@@ -171,7 +171,8 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   const uploadError = document.getElementById("pdfUploadError");
   const review = document.getElementById("pdfReview");
   const segmentsList = document.getElementById("pdfSegmentsList");
-  const passengerName = document.getElementById("pdfPassengerName");
+  const passengerList = document.getElementById("pdfPassengerList");
+  const addPassengerBtn = document.getElementById("pdfAddPassengerBtn");
   const generateBtn = document.getElementById("pdfGenerateBtn");
   const generateError = document.getElementById("pdfGenerateError");
 
@@ -236,6 +237,44 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     }
   });
 
+  // ---- Passenger name rows (dynamic, supports multiple passengers) ----
+  function addPassengerRow(prefill) {
+    const row = document.createElement("div");
+    row.className = "pax-row";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Passenger";
+    input.value = prefill !== undefined ? prefill : (passengerList.children.length === 0 ? "Passenger" : "");
+    row.appendChild(input);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "pax-row__remove";
+    removeBtn.textContent = "✕";
+    removeBtn.title = "Remove passenger";
+    removeBtn.addEventListener("click", () => {
+      // Always keep at least one row so there's somewhere to type a name.
+      if (passengerList.children.length > 1) {
+        row.remove();
+      } else {
+        input.value = "";
+      }
+    });
+    row.appendChild(removeBtn);
+
+    passengerList.appendChild(row);
+  }
+
+  function getPassengerNames() {
+    return [...passengerList.querySelectorAll("input")]
+      .map((el) => el.value.trim())
+      .filter((v) => v);
+  }
+
+  addPassengerRow("Passenger");
+  addPassengerBtn.addEventListener("click", () => addPassengerRow(""));
+
   function renderSegments() {
     segmentsList.innerHTML = "";
     state.segments.forEach((seg, idx) => {
@@ -284,7 +323,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          passenger_name: passengerName.value.trim() || "Passenger",
+          passenger_names: getPassengerNames(),
           trip_type: state.tripType,
           segments: state.segments,
         }),
