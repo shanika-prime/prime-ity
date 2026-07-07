@@ -38,7 +38,7 @@ Return ONLY a JSON object with this exact shape, no markdown fences, no commenta
       "arrival_time": "",
       "arrival_terminal": "",
       "duration": "",
-      "stops": "",                   // e.g. "Non-stop" or "1 stop via CMB"
+      "stops": "",                   // copy the exact wording from the source, e.g. "Non-stop", "1 stop via CMB", "Layover in Dubai - 3h 45m", or "Technical stop in Male" - do NOT paraphrase into a different format, keep words like "Layover" or "Technical stop" verbatim if that's what the source says
       "baggage": "",
       "pnr": "",
       "seat": ""
