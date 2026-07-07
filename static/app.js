@@ -1,4 +1,7 @@
-const ACCEPTED_EXT = ["png", "jpg", "jpeg", "webp"];
+// =====================================================================
+// Shared helpers
+// =====================================================================
+const ACCEPTED_IMG_EXT = ["png", "jpg", "jpeg", "webp"];
 
 function getExt(filename) {
   const m = (filename || "").toLowerCase().match(/\.([a-z0-9]+)$/);
@@ -6,12 +9,12 @@ function getExt(filename) {
 }
 
 /** Filters a FileList into accepted images, reports rejects via errorEl. */
-function filterFiles(fileList, errorEl) {
+function filterImageFiles(fileList, errorEl) {
   const accepted = [];
   const rejected = [];
   [...fileList].forEach((f) => {
     const typeOk = /^image\/(png|jpe?g|webp)$/i.test(f.type || "");
-    const extOk = ACCEPTED_EXT.includes(getExt(f.name));
+    const extOk = ACCEPTED_IMG_EXT.includes(getExt(f.name));
     // Mobile browsers/cloud photo pickers often report an empty or generic
     // f.type, so fall back to the file extension rather than rejecting it.
     if (typeOk || extOk) accepted.push(f);
@@ -23,8 +26,23 @@ function filterFiles(fileList, errorEl) {
   return accepted;
 }
 
-/** Renders thumbnails for a list of File objects into a container, wiring up
- * per-thumb remove buttons that splice the backing array and re-render. */
+/** Filters a FileList into accepted PDFs, reports rejects via errorEl. */
+function filterPdfFiles(fileList, errorEl) {
+  const accepted = [];
+  const rejected = [];
+  [...fileList].forEach((f) => {
+    const typeOk = /^application\/pdf$/i.test(f.type || "");
+    const extOk = getExt(f.name) === "pdf";
+    if (typeOk || extOk) accepted.push(f);
+    else rejected.push(f.name || "unnamed file");
+  });
+  errorEl.textContent = rejected.length
+    ? `Skipped ${rejected.length} file(s) — only PDF is supported: ${rejected.join(", ")}`
+    : "";
+  return accepted;
+}
+
+/** Renders image thumbnails for a list of File objects into a container. */
 function renderThumbs(container, files, onChange) {
   container.innerHTML = "";
   files.forEach((f, i) => {
@@ -46,6 +64,38 @@ function renderThumbs(container, files, onChange) {
   });
 }
 
+/** Renders filename chips for a list of (non-image) File objects, e.g. PDFs. */
+function renderFileChips(container, files, onChange) {
+  container.innerHTML = "";
+  files.forEach((f, i) => {
+    const chip = document.createElement("div");
+    chip.className = "file-chip";
+
+    const icon = document.createElement("span");
+    icon.className = "file-chip__icon";
+    icon.textContent = "📄";
+
+    const name = document.createElement("span");
+    name.className = "file-chip__name";
+    name.textContent = f.name;
+
+    const btn = document.createElement("button");
+    btn.className = "file-chip__remove";
+    btn.type = "button";
+    btn.textContent = "✕";
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      files.splice(i, 1);
+      onChange();
+    };
+
+    chip.appendChild(icon);
+    chip.appendChild(name);
+    chip.appendChild(btn);
+    container.appendChild(chip);
+  });
+}
+
 /** Safely parses a fetch Response as JSON, throwing a readable error instead
  * of a cryptic "Unexpected token '<'" if the server returned an HTML error
  * page (e.g. a 413 Payload Too Large or an unhandled 500). */
@@ -53,7 +103,7 @@ async function parseJsonResponse(res) {
   const contentType = res.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
     if (res.status === 413) {
-      throw new Error("Upload too large — try fewer or smaller screenshots.");
+      throw new Error("Upload too large — try fewer or smaller files.");
     }
     throw new Error(`Server error (status ${res.status}). Please try again.`);
   }
@@ -75,6 +125,138 @@ function wireDropzone(dropzone, fileInput, onFiles) {
     onFiles(e.dataTransfer.files);
   });
   fileInput.addEventListener("change", (e) => onFiles(e.target.files));
+}
+
+const SEGMENT_FIELDS = [
+  ["airline", "Airline"],
+  ["flight_number", "Flight #"],
+  ["cabin_class", "Class"],
+  ["departure_airport_code", "From"],
+  ["departure_city", "Dep. City"],
+  ["departure_date", "Dep. Date"],
+  ["departure_time", "Dep. Time"],
+  ["departure_terminal", "Dep. Terminal"],
+  ["arrival_airport_code", "To"],
+  ["arrival_city", "Arr. City"],
+  ["arrival_date", "Arr. Date"],
+  ["arrival_time", "Arr. Time"],
+  ["arrival_terminal", "Arr. Terminal"],
+  ["duration", "Duration"],
+  ["stops", "Stops"],
+  ["baggage", "Baggage"],
+  ["pnr", "PNR"],
+  ["seat", "Seat"],
+];
+
+/** Renders editable flight segment cards into listEl, mutating `segments`
+ * in place as the user edits fields. Shared by both PDF-generating tabs. */
+function renderSegmentCards(listEl, segments) {
+  listEl.innerHTML = "";
+  segments.forEach((seg, idx) => {
+    const card = document.createElement("div");
+    card.className = "seg-card";
+
+    const head = document.createElement("div");
+    head.className = "seg-card__head";
+    head.innerHTML = `
+      <span class="seg-card__route">${seg.departure_airport_code || "---"} → ${seg.arrival_airport_code || "---"}</span>
+      <span class="seg-card__idx">Flight ${idx + 1} of ${segments.length}</span>
+    `;
+    card.appendChild(head);
+
+    const grid = document.createElement("div");
+    grid.className = "seg-grid";
+    SEGMENT_FIELDS.forEach(([key, label]) => {
+      const field = document.createElement("div");
+      field.className = "seg-field";
+      field.innerHTML = `<label>${label}</label>`;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = seg[key] || "";
+      input.addEventListener("input", (e) => {
+        segments[idx][key] = e.target.value;
+        if (key === "departure_airport_code" || key === "arrival_airport_code") {
+          head.querySelector(".seg-card__route").textContent =
+            `${segments[idx].departure_airport_code || "---"} → ${segments[idx].arrival_airport_code || "---"}`;
+        }
+      });
+      field.appendChild(input);
+      grid.appendChild(field);
+    });
+    card.appendChild(grid);
+    listEl.appendChild(card);
+  });
+}
+
+/** Wires up a dynamic multi-passenger-name list (add/remove rows). Returns
+ * a getNames() function that collects the current non-empty names. */
+function createPassengerList(listEl, addBtnEl) {
+  function addRow(prefill) {
+    const row = document.createElement("div");
+    row.className = "pax-row";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Passenger";
+    input.value = prefill !== undefined ? prefill : (listEl.children.length === 0 ? "Passenger" : "");
+    row.appendChild(input);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "pax-row__remove";
+    removeBtn.textContent = "✕";
+    removeBtn.title = "Remove passenger";
+    removeBtn.addEventListener("click", () => {
+      // Always keep at least one row so there's somewhere to type a name.
+      if (listEl.children.length > 1) {
+        row.remove();
+      } else {
+        input.value = "";
+      }
+    });
+    row.appendChild(removeBtn);
+
+    listEl.appendChild(row);
+  }
+
+  addBtnEl.addEventListener("click", () => addRow(""));
+  addRow("Passenger");
+
+  return {
+    getNames: () =>
+      [...listEl.querySelectorAll("input")].map((el) => el.value.trim()).filter((v) => v),
+  };
+}
+
+/** Posts to /generate-pdf and triggers a browser download of the resulting
+ * file. Shared by both PDF-generating tabs. */
+async function downloadItineraryPdf({ tripType, segments, getPassengerNames }) {
+  const res = await fetch("/generate-pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      passenger_names: getPassengerNames(),
+      trip_type: tripType,
+      segments,
+    }),
+  });
+  if (!res.ok) {
+    const data = await parseJsonResponse(res);
+    throw new Error(data.error || "Could not generate PDF.");
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : "itinerary.pdf";
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // =====================================================================
@@ -115,7 +297,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   }
 
   wireDropzone(dropzone, fileInput, (fileList) => {
-    state.files.push(...filterFiles(fileList, uploadError));
+    state.files.push(...filterImageFiles(fileList, uploadError));
     refreshThumbs();
   });
 
@@ -159,7 +341,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 })();
 
 // =====================================================================
-// PDF tab — upload -> extract -> review/edit -> generate PDF
+// Screenshot -> PDF tab — upload -> extract -> review/edit -> generate PDF
 // =====================================================================
 (() => {
   const state = { files: [], tripType: "One Way", segments: [] };
@@ -171,31 +353,13 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   const uploadError = document.getElementById("pdfUploadError");
   const review = document.getElementById("pdfReview");
   const segmentsList = document.getElementById("pdfSegmentsList");
-  const passengerList = document.getElementById("pdfPassengerList");
-  const addPassengerBtn = document.getElementById("pdfAddPassengerBtn");
   const generateBtn = document.getElementById("pdfGenerateBtn");
   const generateError = document.getElementById("pdfGenerateError");
 
-  const SEGMENT_FIELDS = [
-    ["airline", "Airline"],
-    ["flight_number", "Flight #"],
-    ["cabin_class", "Class"],
-    ["departure_airport_code", "From"],
-    ["departure_city", "Dep. City"],
-    ["departure_date", "Dep. Date"],
-    ["departure_time", "Dep. Time"],
-    ["departure_terminal", "Dep. Terminal"],
-    ["arrival_airport_code", "To"],
-    ["arrival_city", "Arr. City"],
-    ["arrival_date", "Arr. Date"],
-    ["arrival_time", "Arr. Time"],
-    ["arrival_terminal", "Arr. Terminal"],
-    ["duration", "Duration"],
-    ["stops", "Stops"],
-    ["baggage", "Baggage"],
-    ["pnr", "PNR"],
-    ["seat", "Seat"],
-  ];
+  const { getNames: getPassengerNames } = createPassengerList(
+    document.getElementById("pdfPassengerList"),
+    document.getElementById("pdfAddPassengerBtn")
+  );
 
   document.querySelectorAll('input[name="pdf_trip_type"]').forEach((el) => {
     el.addEventListener("change", (e) => (state.tripType = e.target.value));
@@ -207,7 +371,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   }
 
   wireDropzone(dropzone, fileInput, (fileList) => {
-    state.files.push(...filterFiles(fileList, uploadError));
+    state.files.push(...filterImageFiles(fileList, uploadError));
     refreshThumbs();
   });
 
@@ -227,7 +391,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
       if (!res.ok) throw new Error(data.error || "Extraction failed.");
 
       state.segments = data.segments;
-      renderSegments();
+      renderSegmentCards(segmentsList, state.segments);
       review.classList.remove("is-hidden");
     } catch (err) {
       uploadError.textContent = err.message;
@@ -237,114 +401,96 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     }
   });
 
-  // ---- Passenger name rows (dynamic, supports multiple passengers) ----
-  function addPassengerRow(prefill) {
-    const row = document.createElement("div");
-    row.className = "pax-row";
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.placeholder = "Passenger";
-    input.value = prefill !== undefined ? prefill : (passengerList.children.length === 0 ? "Passenger" : "");
-    row.appendChild(input);
-
-    const removeBtn = document.createElement("button");
-    removeBtn.type = "button";
-    removeBtn.className = "pax-row__remove";
-    removeBtn.textContent = "✕";
-    removeBtn.title = "Remove passenger";
-    removeBtn.addEventListener("click", () => {
-      // Always keep at least one row so there's somewhere to type a name.
-      if (passengerList.children.length > 1) {
-        row.remove();
-      } else {
-        input.value = "";
-      }
-    });
-    row.appendChild(removeBtn);
-
-    passengerList.appendChild(row);
-  }
-
-  function getPassengerNames() {
-    return [...passengerList.querySelectorAll("input")]
-      .map((el) => el.value.trim())
-      .filter((v) => v);
-  }
-
-  addPassengerRow("Passenger");
-  addPassengerBtn.addEventListener("click", () => addPassengerRow(""));
-
-  function renderSegments() {
-    segmentsList.innerHTML = "";
-    state.segments.forEach((seg, idx) => {
-      const card = document.createElement("div");
-      card.className = "seg-card";
-
-      const head = document.createElement("div");
-      head.className = "seg-card__head";
-      head.innerHTML = `
-        <span class="seg-card__route">${seg.departure_airport_code || "---"} → ${seg.arrival_airport_code || "---"}</span>
-        <span class="seg-card__idx">Flight ${idx + 1} of ${state.segments.length}</span>
-      `;
-      card.appendChild(head);
-
-      const grid = document.createElement("div");
-      grid.className = "seg-grid";
-      SEGMENT_FIELDS.forEach(([key, label]) => {
-        const field = document.createElement("div");
-        field.className = "seg-field";
-        field.innerHTML = `<label>${label}</label>`;
-        const input = document.createElement("input");
-        input.type = "text";
-        input.value = seg[key] || "";
-        input.addEventListener("input", (e) => {
-          state.segments[idx][key] = e.target.value;
-          if (key === "departure_airport_code" || key === "arrival_airport_code") {
-            head.querySelector(".seg-card__route").textContent =
-              `${state.segments[idx].departure_airport_code || "---"} → ${state.segments[idx].arrival_airport_code || "---"}`;
-          }
-        });
-        field.appendChild(input);
-        grid.appendChild(field);
+  generateBtn.addEventListener("click", async () => {
+    generateError.textContent = "";
+    generateBtn.disabled = true;
+    generateBtn.textContent = "Building PDF…";
+    try {
+      await downloadItineraryPdf({
+        tripType: state.tripType,
+        segments: state.segments,
+        getPassengerNames,
       });
-      card.appendChild(grid);
-      segmentsList.appendChild(card);
-    });
+    } catch (err) {
+      generateError.textContent = err.message;
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.textContent = "Generate itinerary PDF";
+    }
+  });
+})();
+
+// =====================================================================
+// PDF -> PDF tab — upload booking PDF(s) -> extract -> review/edit -> generate PDF
+// =====================================================================
+(() => {
+  const state = { files: [], tripType: "One Way", segments: [] };
+
+  const dropzone = document.getElementById("pdf2pdfDropzone");
+  const fileInput = document.getElementById("pdf2pdfFileInput");
+  const fileChips = document.getElementById("pdf2pdfFiles");
+  const extractBtn = document.getElementById("pdf2pdfExtractBtn");
+  const uploadError = document.getElementById("pdf2pdfUploadError");
+  const review = document.getElementById("pdf2pdfReview");
+  const segmentsList = document.getElementById("pdf2pdfSegmentsList");
+  const generateBtn = document.getElementById("pdf2pdfGenerateBtn");
+  const generateError = document.getElementById("pdf2pdfGenerateError");
+
+  const { getNames: getPassengerNames } = createPassengerList(
+    document.getElementById("pdf2pdfPassengerList"),
+    document.getElementById("pdf2pdfAddPassengerBtn")
+  );
+
+  document.querySelectorAll('input[name="pdf2pdf_trip_type"]').forEach((el) => {
+    el.addEventListener("change", (e) => (state.tripType = e.target.value));
+  });
+
+  function refreshChips() {
+    renderFileChips(fileChips, state.files, refreshChips);
+    extractBtn.disabled = state.files.length === 0;
   }
+
+  wireDropzone(dropzone, fileInput, (fileList) => {
+    state.files.push(...filterPdfFiles(fileList, uploadError));
+    refreshChips();
+  });
+
+  extractBtn.addEventListener("click", async () => {
+    uploadError.textContent = "";
+    review.classList.add("is-hidden");
+    extractBtn.disabled = true;
+    extractBtn.textContent = "Reading PDFs…";
+
+    const formData = new FormData();
+    formData.append("trip_type", state.tripType);
+    state.files.forEach((f) => formData.append("pdfs", f));
+
+    try {
+      const res = await fetch("/extract-pdf", { method: "POST", body: formData });
+      const data = await parseJsonResponse(res);
+      if (!res.ok) throw new Error(data.error || "Extraction failed.");
+
+      state.segments = data.segments;
+      renderSegmentCards(segmentsList, state.segments);
+      review.classList.remove("is-hidden");
+    } catch (err) {
+      uploadError.textContent = err.message;
+    } finally {
+      extractBtn.disabled = state.files.length === 0;
+      extractBtn.textContent = "Read flight details";
+    }
+  });
 
   generateBtn.addEventListener("click", async () => {
     generateError.textContent = "";
     generateBtn.disabled = true;
     generateBtn.textContent = "Building PDF…";
-
     try {
-      const res = await fetch("/generate-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          passenger_names: getPassengerNames(),
-          trip_type: state.tripType,
-          segments: state.segments,
-        }),
+      await downloadItineraryPdf({
+        tripType: state.tripType,
+        segments: state.segments,
+        getPassengerNames,
       });
-      if (!res.ok) {
-        const data = await parseJsonResponse(res);
-        throw new Error(data.error || "Could not generate PDF.");
-      }
-      const blob = await res.blob();
-      const disposition = res.headers.get("Content-Disposition") || "";
-      const match = disposition.match(/filename="?([^"]+)"?/);
-      const filename = match ? match[1] : "itinerary.pdf";
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
     } catch (err) {
       generateError.textContent = err.message;
     } finally {
