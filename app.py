@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from extract import extract_segments_from_images
+from extract import extract_segments_from_images, extract_segments_from_pdf_texts
+from extract_pdf import extract_text_from_pdf
 from text_gen import build_whatsapp_message
 from pdf_gen import generate_itinerary_pdf, build_output_filename
 
@@ -32,10 +33,15 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 ALLOWED_EXT = {"png", "jpg", "jpeg", "webp"}
+ALLOWED_PDF_EXT = {"pdf"}
 
 
 def _allowed(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXT
+
+
+def _allowed_pdf(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_PDF_EXT
 
 
 @app.errorhandler(413)
@@ -54,13 +60,13 @@ def server_error(e):
     return jsonify({"error": "Something went wrong on the server. Please try again."}), 500
 
 
-def _save_uploaded_images(files):
-    """Saves valid uploaded images to disk, returns the list of saved paths.
+def _save_uploaded_files(files, allowed_check):
+    """Saves valid uploaded files to disk, returns the list of saved paths.
     Caller is responsible for deleting them afterwards."""
     session_id = uuid.uuid4().hex[:12]
     saved_paths = []
     for f in files:
-        if f and _allowed(f.filename):
+        if f and allowed_check(f.filename):
             fname = f"{session_id}_{secure_filename(f.filename)}"
             path = os.path.join(UPLOAD_DIR, fname)
             f.save(path)
@@ -90,7 +96,7 @@ def generate():
     if not files:
         return jsonify({"error": "No images uploaded."}), 400
 
-    saved_paths = _save_uploaded_images(files)
+    saved_paths = _save_uploaded_files(files, _allowed)
     try:
         if not saved_paths:
             return jsonify({"error": "No valid image files (png/jpg/webp) found."}), 400
@@ -114,7 +120,7 @@ def extract():
     if not files:
         return jsonify({"error": "No images uploaded."}), 400
 
-    saved_paths = _save_uploaded_images(files)
+    saved_paths = _save_uploaded_files(files, _allowed)
     try:
         if not saved_paths:
             return jsonify({"error": "No valid image files (png/jpg/webp) found."}), 400
@@ -122,6 +128,37 @@ def extract():
         segments = extract_segments_from_images(saved_paths)
         if not segments:
             return jsonify({"error": "No flight details could be read from those images. Try clearer screenshots."}), 422
+
+        return jsonify({"trip_type": trip_type, "segments": segments})
+    finally:
+        _cleanup(saved_paths)
+
+
+@app.route("/extract-pdf", methods=["POST"])
+def extract_pdf():
+    """PDF-to-PDF flow: upload booking PDF(s) -> extract text -> Groq text
+    extraction -> editable segments for review."""
+    trip_type = request.form.get("trip_type", "One Way")
+    files = request.files.getlist("pdfs")
+
+    if not files:
+        return jsonify({"error": "No PDF files uploaded."}), 400
+
+    saved_paths = _save_uploaded_files(files, _allowed_pdf)
+    try:
+        if not saved_paths:
+            return jsonify({"error": "No valid PDF files found."}), 400
+
+        texts = [extract_text_from_pdf(p) for p in saved_paths]
+        if not any(t.strip() for t in texts):
+            return jsonify({
+                "error": "No readable text found in those PDFs. They may be scanned/image-only — "
+                         "try the screenshot upload tabs instead."
+            }), 422
+
+        segments = extract_segments_from_pdf_texts(texts)
+        if not segments:
+            return jsonify({"error": "No flight details could be read from those PDFs."}), 422
 
         return jsonify({"trip_type": trip_type, "segments": segments})
     finally:
