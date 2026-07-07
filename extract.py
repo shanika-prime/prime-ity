@@ -47,10 +47,10 @@ Return ONLY a JSON object with this exact shape, no markdown fences, no commenta
 }
 
 Rules:
-- One image may contain multiple flight segments (e.g. a round trip or a
+- One source may contain multiple flight segments (e.g. a round trip or a
   multi-city itinerary, or a connecting flight shown as two legs). List each
   leg as its own object in "segments", in chronological order.
-- If a field is not visible in the image, use an empty string "" - never guess.
+- If a field is not present in the source, use an empty string "" - never guess.
 - Airport codes should be the 3-letter IATA code if shown (e.g. CMB, DXB).
 - Do not include any text outside the JSON object.
 """
@@ -69,6 +69,21 @@ def _strip_json_fences(text: str) -> str:
     text = re.sub(r"^```(json)?", "", text).strip()
     text = re.sub(r"```$", "", text).strip()
     return text
+
+
+def _parse_segments_response(raw: str, context: str) -> list:
+    """Shared JSON-parsing logic for both the vision and text extraction
+    paths — never raises, logs and returns [] on any parse failure."""
+    cleaned = _strip_json_fences(raw)
+    try:
+        parsed = json.loads(cleaned)
+        segments = parsed.get("segments", [])
+        if isinstance(segments, dict):
+            segments = [segments]
+        return segments
+    except (json.JSONDecodeError, AttributeError):
+        logger.warning("Could not parse JSON from Groq response for %s: %r", context, raw)
+        return []
 
 
 def extract_segments_from_image(image_path: str) -> list:
@@ -99,17 +114,7 @@ def extract_segments_from_image(image_path: str) -> list:
         return []
 
     raw = completion.choices[0].message.content
-    cleaned = _strip_json_fences(raw)
-
-    try:
-        parsed = json.loads(cleaned)
-        segments = parsed.get("segments", [])
-        if isinstance(segments, dict):
-            segments = [segments]
-        return segments
-    except (json.JSONDecodeError, AttributeError):
-        logger.warning("Could not parse JSON from Groq response for %s: %r", image_path, raw)
-        return []
+    return _parse_segments_response(raw, image_path)
 
 
 def extract_segments_from_images(image_paths: list) -> list:
@@ -121,6 +126,57 @@ def extract_segments_from_images(image_paths: list) -> list:
         segs = extract_segments_from_image(path)
         for s in segs:
             s["source_image"] = idx
+        all_segments.extend(segs)
+
+    def sort_key(seg):
+        return (seg.get("departure_date") or "9999", seg.get("departure_time") or "99:99")
+
+    all_segments.sort(key=sort_key)
+    return all_segments
+
+
+def extract_segments_from_text(text: str, context: str = "pdf") -> list:
+    """Sends extracted PDF text (e.g. an e-ticket or booking confirmation)
+    to the Groq text model and returns a list of segment dicts. Empty list
+    on any failure — logged, never raised."""
+    if not text.strip():
+        return []
+    try:
+        completion = client.chat.completions.create(
+            model=VISION_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "You are extracting flight itinerary details from the text of a "
+                        "ticket/booking confirmation document below.\n\n"
+                        + SEGMENT_SCHEMA_HINT
+                        + "\n\nDocument text:\n\n"
+                        + text
+                    ),
+                }
+            ],
+            temperature=0.1,
+            max_completion_tokens=2048,
+            response_format={"type": "json_object"},
+            reasoning_effort="none",
+        )
+    except Exception:
+        logger.exception("Groq text extraction failed for %s", context)
+        return []
+
+    raw = completion.choices[0].message.content
+    return _parse_segments_response(raw, context)
+
+
+def extract_segments_from_pdf_texts(texts: list) -> list:
+    """Runs extraction across multiple PDFs' extracted text and returns the
+    combined, chronologically-ordered list of segments."""
+    all_segments = []
+    for idx, text in enumerate(texts):
+        segs = extract_segments_from_text(text, context=f"pdf[{idx}]")
+        for s in segs:
+            s["source_pdf"] = idx
         all_segments.extend(segs)
 
     def sort_key(seg):
