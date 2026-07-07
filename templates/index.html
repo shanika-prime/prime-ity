@@ -28,7 +28,8 @@
 
   <div class="tabs" id="tabs">
     <button class="tab-btn is-active" data-tab="whatsapp" type="button">WhatsApp</button>
-    <button class="tab-btn" data-tab="pdf" type="button">PDF</button>
+    <button class="tab-btn" data-tab="pdf" type="button">Screenshot → PDF</button>
+    <button class="tab-btn" data-tab="pdf2pdf" type="button">PDF → PDF</button>
   </div>
 
   <!-- ============ WHATSAPP TAB ============ -->
@@ -107,6 +108,49 @@
 
       <button class="btn btn--primary" id="pdfGenerateBtn">Generate itinerary PDF</button>
       <p class="error" id="pdfGenerateError"></p>
+    </div>
+  </section>
+
+  <!-- ============ PDF-TO-PDF TAB ============ -->
+  <section class="panel tab-panel is-hidden" id="tab-pdf2pdf">
+    <h1 class="panel__title">Add booking PDFs</h1>
+    <p class="panel__sub">Upload e-tickets or booking confirmation PDFs, review and edit the extracted details, then generate a clean travel itinerary PDF.</p>
+
+    <fieldset class="trip-type">
+      <legend>Trip type</legend>
+      <label class="chip"><input type="radio" name="pdf2pdf_trip_type" value="One Way" checked><span>One Way</span></label>
+      <label class="chip"><input type="radio" name="pdf2pdf_trip_type" value="Round Trip"><span>Round Trip</span></label>
+      <label class="chip"><input type="radio" name="pdf2pdf_trip_type" value="Multi-City"><span>Multi-City</span></label>
+    </fieldset>
+
+    <label class="dropzone" id="pdf2pdfDropzone" for="pdf2pdfFileInput">
+      <div class="dropzone__perforation" aria-hidden="true"></div>
+      <div class="dropzone__body">
+        <strong>Drop booking PDFs here</strong>
+        <span>or click to browse — PDF only</span>
+      </div>
+    </label>
+    <input type="file" id="pdf2pdfFileInput" accept="application/pdf,.pdf" multiple hidden>
+
+    <div class="file-chips" id="pdf2pdfFiles"></div>
+
+    <button class="btn btn--primary" id="pdf2pdfExtractBtn" disabled>Read flight details</button>
+    <p class="error" id="pdf2pdfUploadError"></p>
+
+    <div class="pdf-review is-hidden" id="pdf2pdfReview">
+      <h2 class="panel__title" style="font-size:18px;">Review extracted details</h2>
+      <p class="panel__sub">Check each flight against the document — edit anything before generating the PDF.</p>
+
+      <div id="pdf2pdfSegmentsList" class="segments"></div>
+
+      <div class="pax-block">
+        <span class="pax-block__label">Passenger name(s)</span>
+        <div id="pdf2pdfPassengerList" class="pax-list"></div>
+        <button class="btn btn--ghost" id="pdf2pdfAddPassengerBtn" type="button">+ Add passenger</button>
+      </div>
+
+      <button class="btn btn--primary" id="pdf2pdfGenerateBtn">Generate itinerary PDF</button>
+      <p class="error" id="pdf2pdfGenerateError"></p>
     </div>
   </section>
 
