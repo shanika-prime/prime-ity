@@ -8,7 +8,7 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, KeepTogether
 )
 
 NAVY = colors.HexColor("#10233F")
@@ -156,6 +156,8 @@ def generate_itinerary_pdf(output_path: str, passenger_names: list,
     story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=1.2, color=NAVY, spaceAfter=10))
 
+    if isinstance(passenger_names, str):
+        passenger_names = [passenger_names]
     clean_names = [n.strip() for n in passenger_names if n and n.strip()] or ["Passenger"]
     if len(clean_names) == 1:
         story.append(Paragraph(f"Passenger: <b>{clean_names[0]}</b>", styles["PaxLine"]))
@@ -170,8 +172,7 @@ def generate_itinerary_pdf(output_path: str, passenger_names: list,
     else:
         total = len(segments)
         for i, seg in enumerate(segments, start=1):
-            story.append(_segment_card(seg, i, total))
-            story.append(Spacer(1, 12))
+            story.append(KeepTogether([_segment_card(seg, i, total), Spacer(1, 12)]))
 
     story.append(Spacer(1, 4))
     story.append(HRFlowable(width="100%", thickness=0.5, color=TEXT_GREY, spaceAfter=6))
@@ -189,6 +190,8 @@ def build_output_filename(passenger_names: list, segments: list) -> str:
         if s.get("pnr"):
             pnr = s["pnr"]
             break
+    if isinstance(passenger_names, str):
+        passenger_names = [passenger_names]
     clean_names = [n.strip() for n in passenger_names if n and n.strip()] or ["Passenger"]
     raw_first = clean_names[0].split(" ")[0] if clean_names[0] else "PASSENGER"
     first_name = re.sub(r"[^A-Za-z0-9]", "", raw_first).upper() or "PASSENGER"
