@@ -2,5 +2,6 @@ Flask==3.0.3
 gunicorn==22.0.0
 groq==1.5.0
 reportlab==4.2.2
+pdfplumber==0.11.4
 python-dotenv==1.0.1
 Pillow==10.4.0
