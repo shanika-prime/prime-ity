@@ -408,6 +408,43 @@ body {
 }
 .pax-row__remove:hover { background: #FBEAEA; color: #B3261E; border-color: #B3261E; }
 
+/* ---------- PDF file chips (non-image uploads) ---------- */
+.file-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+.file-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #FAFBFD;
+}
+.file-chip__icon { font-size: 18px; }
+.file-chip__name {
+  flex: 1;
+  font-size: 13px;
+  font-family: 'IBM Plex Mono', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-chip__remove {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: none;
+  background: rgba(16,35,63,0.85);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 /* ---------- WhatsApp message output ---------- */
 .msg-output {
   margin-top: 8px;
