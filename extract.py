@@ -19,6 +19,25 @@ client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.6-27b")
 
 SEGMENT_SCHEMA_HINT = """
+You are reading a flight itinerary/e-ticket/booking screenshot or document.
+Accuracy matters more than speed here — take your time and read carefully
+before answering.
+
+Read every field character by character before writing it down. Pay close
+attention to characters that are easy to confuse, especially in PNRs,
+flight numbers, and airport codes:
+- digit 0 vs letter O
+- digit 1 vs letter I vs letter l
+- digit 5 vs letter S
+- digit 8 vs letter B
+- digit 2 vs letter Z
+Do not auto-correct or "clean up" a PNR/flight number/code into a more
+familiar-looking value — copy exactly what is shown, even if it looks unusual.
+
+If any part of the source is blurry, cut off, or ambiguous, leave that
+specific field as an empty string rather than guessing. It is much better to
+leave a field blank than to fill it with a wrong value.
+
 Return ONLY a JSON object with this exact shape, no markdown fences, no commentary:
 
 {
@@ -52,6 +71,8 @@ Rules:
   leg as its own object in "segments", in chronological order.
 - If a field is not present in the source, use an empty string "" - never guess.
 - Airport codes should be the 3-letter IATA code if shown (e.g. CMB, DXB).
+- Before finalizing your answer, re-check every date, time, and code you
+  extracted against the source one more time.
 - Do not include any text outside the JSON object.
 """
 
@@ -104,10 +125,11 @@ def extract_segments_from_image(image_path: str) -> list:
                     ],
                 }
             ],
-            temperature=0.1,
-            max_completion_tokens=2048,
+            temperature=0.2,
+            max_completion_tokens=4096,
             response_format={"type": "json_object"},
-            reasoning_effort="none",  # skip "thinking" mode - we want fast, deterministic JSON, not reasoning tokens eating the token budget
+            reasoning_effort="default",  # thinking mode - accuracy matters more than speed for reading fine print
+            reasoning_format="hidden",   # only return the final JSON, not the reasoning trace
         )
     except Exception:
         logger.exception("Groq vision extraction failed for %s", image_path)
@@ -156,10 +178,11 @@ def extract_segments_from_text(text: str, context: str = "pdf") -> list:
                     ),
                 }
             ],
-            temperature=0.1,
-            max_completion_tokens=2048,
+            temperature=0.2,
+            max_completion_tokens=4096,
             response_format={"type": "json_object"},
-            reasoning_effort="none",
+            reasoning_effort="default",
+            reasoning_format="hidden",
         )
     except Exception:
         logger.exception("Groq text extraction failed for %s", context)
