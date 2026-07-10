@@ -70,12 +70,24 @@ def _leg_block(seg: dict, index: int, total: int) -> str:
         lines.append(date_time_line)
 
     if stops:
-        if "layover" in stops.lower():
-            lines.append("..........")
+        stops_lower = stops.lower()
+        LAYOVER_WORDS = ("layover", "transit", "transfer")
+        is_layover_word = any(w in stops_lower for w in LAYOVER_WORDS)
+        is_technical = "technical" in stops_lower
+        is_nonstop = "non-stop" in stops_lower or "nonstop" in stops_lower or stops_lower == "direct"
+        if is_nonstop or (is_technical and not is_layover_word):
             lines.append(stops)
-            lines.append("..........")
         else:
+            # "Layover", "transit", and "transfer" all mean the same thing
+            # here and get the same treatment. Anything else that isn't
+            # non-stop/technical ("1 stop via X", "Connects in X", etc.) is
+            # also treated as a layover by default, since relying on one
+            # exact word being present is too fragile — screenshots phrase
+            # this many different ways.
+            dot_line = "•" * 10
+            lines.append(dot_line)
             lines.append(stops)
+            lines.append(dot_line)
     if cabin:
         lines.append(cabin)
 
