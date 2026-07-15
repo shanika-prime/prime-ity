@@ -258,6 +258,8 @@ body {
   cursor: pointer;
   line-height: 1;
 }
+/* PDF chips mixed into the thumbs area take a full row */
+.thumbs .file-chip { flex: 1 1 100%; }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -407,6 +409,46 @@ body {
   cursor: pointer;
 }
 .pax-row__remove:hover { background: #FBEAEA; color: #B3261E; border-color: #B3261E; }
+
+/* ---------- Message options (baggage/meal) ---------- */
+.options {
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin: 4px 0 16px;
+}
+.options legend {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 0 6px;
+}
+.opt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 14px;
+  cursor: pointer;
+}
+.opt-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--navy);
+  cursor: pointer;
+}
+.opt-row span { flex: 0 0 auto; }
+.opt-kg {
+  width: 64px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  margin-left: auto;
+}
+.opt-kg:focus { outline: 2px solid var(--amber-deep); outline-offset: 1px; }
 
 /* ---------- PDF file chips (non-image uploads) ---------- */
 .file-chips {

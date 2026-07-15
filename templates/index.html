@@ -47,25 +47,36 @@
     <label class="dropzone" id="dropzone" for="fileInput">
       <div class="dropzone__perforation" aria-hidden="true"></div>
       <div class="dropzone__body">
-        <strong>Drop screenshots here</strong>
-        <span>or click to browse — PNG / JPG / WEBP</span>
+        <strong>Drop screenshots or PDFs here</strong>
+        <span>or click to browse — PNG / JPG / WEBP / PDF. For a round trip, upload the onward file first, then the return.</span>
       </div>
     </label>
-    <input type="file" id="fileInput" accept="image/*" multiple hidden>
+    <input type="file" id="fileInput" accept="image/*,application/pdf,.pdf" multiple hidden>
 
     <div class="thumbs" id="thumbs"></div>
+
+    <fieldset class="options">
+      <legend>Include in message</legend>
+      <label class="opt-row">
+        <input type="checkbox" id="optCheckedBag" checked>
+        <span>Checked baggage</span>
+        <input type="number" id="optCheckedBagKg" value="30" min="0" max="99" class="opt-kg"> kg
+      </label>
+      <label class="opt-row">
+        <input type="checkbox" id="optCarryOn" checked>
+        <span>Carry-on baggage</span>
+        <input type="number" id="optCarryOnKg" value="7" min="0" max="99" class="opt-kg"> kg
+      </label>
+      <label class="opt-row">
+        <input type="checkbox" id="optMeal">
+        <span>Meal included</span>
+      </label>
+    </fieldset>
 
     <button class="btn btn--primary" id="generateBtn" disabled>Generate WhatsApp message</button>
     <p class="error" id="uploadError"></p>
 
-    <div class="msg-output is-hidden" id="msgOutput">
-      <label class="field">
-        <span>Message preview</span>
-        <textarea id="msgText" rows="10" readonly></textarea>
-      </label>
-      <button class="btn btn--ghost" id="copyBtn">Copy text</button>
-      <a class="btn btn--primary" id="whatsappBtn" href="#" target="_blank" rel="noopener">Open in WhatsApp</a>
-    </div>
+    <div id="msgOutputs"></div>
   </section>
 
   <!-- ============ PDF TAB ============ -->

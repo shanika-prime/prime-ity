@@ -272,7 +272,9 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 });
 
 // =====================================================================
-// WhatsApp tab — one click: upload -> extract -> message
+// WhatsApp tab — one click: upload -> extract -> message(s).
+// 2+ files = round trip: 1st file is Onward, the rest are Return, each
+// shown in its own copyable box.
 // =====================================================================
 (() => {
   const state = { files: [], tripType: "One Way" };
@@ -282,60 +284,157 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   const thumbs = document.getElementById("thumbs");
   const generateBtn = document.getElementById("generateBtn");
   const uploadError = document.getElementById("uploadError");
-  const msgOutput = document.getElementById("msgOutput");
-  const msgText = document.getElementById("msgText");
-  const copyBtn = document.getElementById("copyBtn");
-  const whatsappBtn = document.getElementById("whatsappBtn");
+  const msgOutputs = document.getElementById("msgOutputs");
 
   document.querySelectorAll('input[name="trip_type"]').forEach((el) => {
     el.addEventListener("change", (e) => (state.tripType = e.target.value));
   });
 
-  function refreshThumbs() {
-    renderThumbs(thumbs, state.files, refreshThumbs);
+  /** Accepts images and PDFs; reports rejects. */
+  function filterWhatsappFiles(fileList) {
+    const accepted = [];
+    const rejected = [];
+    [...fileList].forEach((f) => {
+      const imgOk = /^image\/(png|jpe?g|webp)$/i.test(f.type || "") ||
+        ACCEPTED_IMG_EXT.includes(getExt(f.name));
+      const pdfOk = /^application\/pdf$/i.test(f.type || "") || getExt(f.name) === "pdf";
+      if (imgOk || pdfOk) accepted.push(f);
+      else rejected.push(f.name || "unnamed file");
+    });
+    uploadError.textContent = rejected.length
+      ? `Skipped ${rejected.length} file(s) — only PNG, JPG, WEBP, and PDF are supported: ${rejected.join(", ")}`
+      : "";
+    return accepted;
+  }
+
+  /** Mixed previews: image thumbnails for images, filename chips for PDFs. */
+  function refreshPreviews() {
+    thumbs.innerHTML = "";
+    state.files.forEach((f, i) => {
+      const isPdf = /^application\/pdf$/i.test(f.type || "") || getExt(f.name) === "pdf";
+      let el;
+      if (isPdf) {
+        el = document.createElement("div");
+        el.className = "file-chip";
+        el.innerHTML = `<span class="file-chip__icon">📄</span><span class="file-chip__name"></span>`;
+        el.querySelector(".file-chip__name").textContent = f.name;
+        const btn = document.createElement("button");
+        btn.className = "file-chip__remove";
+        btn.type = "button";
+        btn.textContent = "✕";
+        btn.onclick = (e) => { e.stopPropagation(); state.files.splice(i, 1); refreshPreviews(); };
+        el.appendChild(btn);
+      } else {
+        el = document.createElement("div");
+        el.className = "thumb";
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(f);
+        const btn = document.createElement("button");
+        btn.className = "thumb__remove";
+        btn.textContent = "✕";
+        btn.onclick = (e) => { e.stopPropagation(); state.files.splice(i, 1); refreshPreviews(); };
+        el.appendChild(img);
+        el.appendChild(btn);
+      }
+      thumbs.appendChild(el);
+    });
     generateBtn.disabled = state.files.length === 0;
   }
 
   wireDropzone(dropzone, fileInput, (fileList) => {
-    state.files.push(...filterImageFiles(fileList, uploadError));
-    refreshThumbs();
+    state.files.push(...filterWhatsappFiles(fileList));
+    refreshPreviews();
   });
+
+  /** Renders one copyable message box with copy + WhatsApp buttons. */
+  function renderMessageBox(label, message, messageShort) {
+    const box = document.createElement("div");
+    box.className = "msg-output";
+    let isShort = false;
+
+    const field = document.createElement("label");
+    field.className = "field";
+    const span = document.createElement("span");
+    span.textContent = label;
+    const ta = document.createElement("textarea");
+    ta.rows = 10;
+    ta.readOnly = true;
+    ta.value = message;
+    field.appendChild(span);
+    field.appendChild(ta);
+    box.appendChild(field);
+
+    const waBtn = document.createElement("a");
+    waBtn.className = "btn btn--primary";
+    waBtn.target = "_blank";
+    waBtn.rel = "noopener";
+    waBtn.textContent = "Open in WhatsApp";
+    waBtn.href = `https://wa.me/?text=${encodeURIComponent(message)}`;
+
+    function applyMode() {
+      ta.value = isShort ? messageShort : message;
+      waBtn.href = `https://wa.me/?text=${encodeURIComponent(ta.value)}`;
+      shortBtn.textContent = isShort ? "Show full details" : "Shorter details";
+    }
+
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "btn btn--ghost";
+    copyBtn.type = "button";
+    copyBtn.textContent = "Copy text";
+    copyBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(ta.value);
+        copyBtn.textContent = "Copied ✓";
+        setTimeout(() => (copyBtn.textContent = "Copy text"), 1500);
+      } catch {
+        ta.select();
+        document.execCommand("copy");
+      }
+    });
+    box.appendChild(copyBtn);
+
+    const shortBtn = document.createElement("button");
+    shortBtn.className = "btn btn--ghost";
+    shortBtn.type = "button";
+    shortBtn.textContent = "Shorter details";
+    if (messageShort) {
+      shortBtn.addEventListener("click", () => {
+        isShort = !isShort;
+        applyMode();
+      });
+      box.appendChild(shortBtn);
+    }
+
+    box.appendChild(waBtn);
+    msgOutputs.appendChild(box);
+  }
 
   generateBtn.addEventListener("click", async () => {
     uploadError.textContent = "";
-    msgOutput.classList.add("is-hidden");
+    msgOutputs.innerHTML = "";
     generateBtn.disabled = true;
-    generateBtn.textContent = "Reading images…";
+    generateBtn.textContent = "Reading files…";
 
     const formData = new FormData();
     formData.append("trip_type", state.tripType);
     state.files.forEach((f) => formData.append("images", f));
+    formData.append("checked_baggage", document.getElementById("optCheckedBag").checked ? "1" : "0");
+    formData.append("checked_baggage_kg", document.getElementById("optCheckedBagKg").value || "30");
+    formData.append("carry_on", document.getElementById("optCarryOn").checked ? "1" : "0");
+    formData.append("carry_on_kg", document.getElementById("optCarryOnKg").value || "7");
+    formData.append("meal", document.getElementById("optMeal").checked ? "1" : "0");
 
     try {
       const res = await fetch("/generate", { method: "POST", body: formData });
       const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error || "Could not generate message.");
 
-      msgText.value = data.message;
-      whatsappBtn.href = `https://wa.me/?text=${encodeURIComponent(data.message)}`;
-      msgOutput.classList.remove("is-hidden");
+      (data.messages || []).forEach((m) => renderMessageBox(m.label, m.message, m.message_short));
     } catch (err) {
       uploadError.textContent = err.message;
     } finally {
       generateBtn.disabled = state.files.length === 0;
       generateBtn.textContent = "Generate WhatsApp message";
-    }
-  });
-
-  copyBtn.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(msgText.value);
-      const original = copyBtn.textContent;
-      copyBtn.textContent = "Copied ✓";
-      setTimeout(() => (copyBtn.textContent = original), 1500);
-    } catch {
-      msgText.select();
-      document.execCommand("copy");
     }
   });
 })();

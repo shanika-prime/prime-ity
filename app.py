@@ -7,7 +7,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from extract import extract_segments_from_images, extract_segments_from_pdf_texts
+from extract import (
+    extract_segments_from_images,
+    extract_segments_from_pdf_texts,
+    extract_segments_from_image,
+    extract_segments_from_text,
+)
 from extract_pdf import extract_text_from_pdf
 from text_gen import build_whatsapp_message
 from pdf_gen import generate_itinerary_pdf, build_output_filename
@@ -42,6 +47,23 @@ def _allowed(filename):
 
 def _allowed_pdf(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_PDF_EXT
+
+
+def _allowed_any(filename):
+    return _allowed(filename) or _allowed_pdf(filename)
+
+
+def _extract_one_file(path):
+    """Extracts segments from a single uploaded file (image or PDF),
+    sorted chronologically within that file."""
+    if path.lower().endswith(".pdf"):
+        text = extract_text_from_pdf(path)
+        segs = extract_segments_from_text(text, context=path) if text.strip() else []
+    else:
+        segs = extract_segments_from_image(path)
+    segs.sort(key=lambda s: (s.get("departure_date") or "9999",
+                              s.get("departure_time") or "99:99"))
+    return segs
 
 
 @app.errorhandler(413)
@@ -89,24 +111,62 @@ def index():
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    """One-click WhatsApp flow: upload -> extract -> message, no review step."""
+    """One-click WhatsApp flow: upload -> extract -> message(s).
+    With 2+ files the trip is treated as a round trip: the 1st file is the
+    onward journey and the rest are the return, each produced as its own
+    copyable message."""
     trip_type = request.form.get("trip_type", "One Way")
     files = request.files.getlist("images")
+    options = {
+        "checked_baggage": request.form.get("checked_baggage") == "1",
+        "checked_baggage_kg": request.form.get("checked_baggage_kg", "30"),
+        "carry_on": request.form.get("carry_on") == "1",
+        "carry_on_kg": request.form.get("carry_on_kg", "7"),
+        "meal": request.form.get("meal") == "1",
+    }
 
     if not files:
-        return jsonify({"error": "No images uploaded."}), 400
+        return jsonify({"error": "No files uploaded."}), 400
 
-    saved_paths = _save_uploaded_files(files, _allowed)
+    saved_paths = _save_uploaded_files(files, _allowed_any)
     try:
         if not saved_paths:
-            return jsonify({"error": "No valid image files (png/jpg/webp) found."}), 400
+            return jsonify({"error": "No valid files (png/jpg/webp/pdf) found."}), 400
 
-        segments = extract_segments_from_images(saved_paths)
-        if not segments:
-            return jsonify({"error": "No flight details could be read from those images. Try clearer screenshots."}), 422
+        # Extract per file so file order can define onward vs return.
+        journeys = [_extract_one_file(p) for p in saved_paths]
 
-        message = build_whatsapp_message(trip_type, segments)
-        return jsonify({"message": message})
+        if not any(journeys):
+            return jsonify({"error": "No flight details could be read from those files. Try clearer screenshots or text-based PDFs."}), 422
+
+        messages = []
+        if len(saved_paths) >= 2:
+            onward = journeys[0]
+            ret = [s for j in journeys[1:] for s in j]
+            if onward:
+                messages.append({
+                    "label": "Onward",
+                    "message": build_whatsapp_message(trip_type, onward, options,
+                                                       heading="✈️ *Onward Flight*"),
+                    "message_short": build_whatsapp_message(trip_type, onward, options,
+                                                             heading="✈️ *Onward Flight*", short=True),
+                })
+            if ret:
+                messages.append({
+                    "label": "Return",
+                    "message": build_whatsapp_message(trip_type, ret, options,
+                                                       heading="✈️ *Return Flight*"),
+                    "message_short": build_whatsapp_message(trip_type, ret, options,
+                                                             heading="✈️ *Return Flight*", short=True),
+                })
+        else:
+            messages.append({
+                "label": "Message",
+                "message": build_whatsapp_message(trip_type, journeys[0], options),
+                "message_short": build_whatsapp_message(trip_type, journeys[0], options, short=True),
+            })
+
+        return jsonify({"messages": messages})
     finally:
         _cleanup(saved_paths)
 
