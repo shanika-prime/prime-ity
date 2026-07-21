@@ -5,20 +5,16 @@ booking-document text, using Groq's vision-capable model.
 This mirrors the approach used by Prime Ticket (a sibling project with
 proven good extraction accuracy) rather than assumptions from generic
 vendor docs:
-- Single model call, no "thinking"/reasoning mode (reasoning_effort="none")
-  and no second verification pass. In practice, thinking mode gives the
-  model room to paraphrase instead of transcribing literally, which hurts
-  this kind of read-exactly-what's-there extraction — and a verify pass
-  just doubles latency without a proven accuracy gain.
-- When multiple images (or multiple PDF texts) belong to the same booking,
-  they're sent to the model together in ONE call, not one call per file,
-  so it can reconcile the whole itinerary (e.g. matching a transit between
-  two screenshots) instead of guessing at each one in isolation. If that
-  combined call hits a rate/size limit (multiple images can add up to more
-  tokens per request than Groq's free tier allows), it automatically falls
-  back to one call per file and merges the results — this keeps the
-  cross-image accuracy benefit when it fits, without ever hard-failing a
-  multi-image upload.
+- Single model call per file, no "thinking"/reasoning mode
+  (reasoning_effort="none") and no second verification pass. In practice,
+  thinking mode gives the model room to paraphrase instead of transcribing
+  literally, which hurts this kind of read-exactly-what's-there extraction.
+- When multiple images or PDFs are uploaded together, each one gets its own
+  dedicated extraction call rather than being combined into one request —
+  batching multiple files into a single call was tried and found to reduce
+  accuracy (the model can conflate details across files when several are in
+  one prompt at once). One call per file, merged afterward, is simpler and
+  matches what's proven most accurate in practice across every tab.
 - Images are downscaled to a moderate size and JPEG-compressed rather than
   upscaled/sent as lossless PNGs — oversized payloads seem to hurt more
   than help.
@@ -50,13 +46,6 @@ VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.6-27b")
 # Created lazily on first use (not at import) so a missing GROQ_API_KEY
 # logs a clear error at request time instead of crashing the app on boot.
 _client = None
-
-
-class _LimitExceeded(Exception):
-    """Raised internally when a call fails specifically due to a rate
-    limit or an oversized request — signals callers to retry as smaller
-    per-file calls instead of giving up."""
-    pass
 
 
 def _get_client():
@@ -177,13 +166,10 @@ def _parse_segments_response(raw: str, context: str) -> list:
     return segments if isinstance(segments, list) else []
 
 
-def _chat(content, context: str, allow_fallback: bool = False) -> str:
-    """Single Groq call — no thinking mode, no verification pass.
-
-    Returns raw response text, or '' on any API failure (logged, never
-    raised) — EXCEPT when allow_fallback=True and the failure is
-    specifically a rate limit or an oversized request, in which case
-    _LimitExceeded is raised so the caller can retry as smaller calls."""
+def _chat(content, context: str) -> str:
+    """Single Groq call — no thinking mode, no verification pass, no
+    batching of multiple files into one call. Returns raw response text,
+    or '' on any API failure (logged, never raised)."""
     client = _get_client()
     if client is None:
         return ""
@@ -199,18 +185,9 @@ def _chat(content, context: str, allow_fallback: bool = False) -> str:
         return completion.choices[0].message.content or ""
     except groq.RateLimitError as e:
         logger.warning("Groq rate limit hit for %s: %s", context, e)
-        if allow_fallback:
-            raise _LimitExceeded(str(e)) from e
         return ""
     except groq.APIStatusError as e:
-        msg = str(e).lower()
-        is_size_or_limit = e.status_code in (413, 429) or "too large" in msg or "rate_limit" in msg
-        if is_size_or_limit:
-            logger.warning("Groq limit/size error for %s: %s", context, e)
-            if allow_fallback:
-                raise _LimitExceeded(str(e)) from e
-            return ""
-        logger.exception("Groq call failed for %s", context)
+        logger.warning("Groq API error for %s: HTTP %s %s", context, e.status_code, e)
         return ""
     except Exception:
         logger.exception("Groq call failed for %s", context)
@@ -242,37 +219,14 @@ def extract_segments_from_image(image_path: str) -> list:
 
 
 def extract_segments_from_images(image_paths: list) -> list:
-    """Multi-image extraction. Tries all images together in ONE call first
-    so the model reads them as one booking (e.g. matching a transit between
-    two screenshots) — this matches how a person would read them, rather
-    than extracting each in isolation and hoping the pieces line up
-    afterward. If that combined call hits a rate/size limit, or comes back
-    with nothing, falls back to one call per image and merges the results
-    — multi-image uploads should never hard-fail just because they didn't
-    fit in a single request."""
+    """Multi-image extraction: one dedicated call per image, then merge and
+    sort. This matches the WhatsApp tab's approach exactly (which has
+    proven the most accurate in practice) — batching multiple images into
+    a single call was tried and found to reduce accuracy, likely because
+    the model can conflate details across images when several are in one
+    prompt. Simpler, and consistent across every tab in the app."""
     if not image_paths:
         return []
-    if len(image_paths) == 1:
-        return extract_segments_from_image(image_paths[0])
-
-    content = [
-        {"type": "text", "text": EXTRACT_PROMPT +
-         "\n(The itinerary details are in the attached image(s) below — read all of "
-         "them together as one booking. Respond with ONLY the JSON object.)"}
-    ]
-    for path in image_paths:
-        content.append({"type": "image_url", "image_url": {"url": preprocess_image_to_data_url(path)}})
-
-    context = f"{len(image_paths)} image(s) batched"
-    try:
-        raw = _chat(content, context, allow_fallback=True)
-        segments = validate_segments(_parse_segments_response(raw, context))
-        if segments:
-            return _sort_segments(segments)
-        logger.info("Batched call for %s returned no segments; falling back to per-image", context)
-    except _LimitExceeded:
-        logger.info("Batched call for %s hit a limit; falling back to per-image", context)
-
     all_segments = []
     for path in image_paths:
         all_segments.extend(extract_segments_from_image(path))
@@ -292,32 +246,11 @@ def extract_segments_from_text(text: str, context: str = "pdf") -> list:
 
 
 def extract_segments_from_pdf_texts(texts: list) -> list:
-    """Multi-PDF extraction. Tries all documents combined into ONE call
-    first (with document separators) so the model reads them together as
-    one booking, same reasoning as extract_segments_from_images — and
-    falls back to one call per document on a limit error or empty result."""
+    """Multi-PDF extraction: one dedicated call per document, then merge
+    and sort — same reasoning as extract_segments_from_images."""
     non_empty = [t for t in texts if t and t.strip()]
     if not non_empty:
         return []
-    if len(non_empty) == 1:
-        return extract_segments_from_text(non_empty[0], context="pdf")
-
-    combined = ""
-    for i, text in enumerate(non_empty):
-        combined += f"\n--- DOCUMENT {i + 1} ---\n"
-        combined += text + "\n"
-
-    context = f"{len(non_empty)} pdf(s) batched"
-    try:
-        raw = _chat([{"type": "text", "text": EXTRACT_PROMPT + combined}],
-                    context, allow_fallback=True)
-        segments = validate_segments(_parse_segments_response(raw, context))
-        if segments:
-            return _sort_segments(segments)
-        logger.info("Batched call for %s returned no segments; falling back to per-document", context)
-    except _LimitExceeded:
-        logger.info("Batched call for %s hit a limit; falling back to per-document", context)
-
     all_segments = []
     for i, text in enumerate(non_empty):
         all_segments.extend(extract_segments_from_text(text, context=f"pdf[{i}]"))
