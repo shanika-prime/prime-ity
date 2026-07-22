@@ -11,6 +11,7 @@ slips through.
 """
 import re
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +93,55 @@ def normalize_time(value: str) -> str:
     return f"{hh:02d}:{mm:02d}"
 
 
+def _is_plausible_year(y: int) -> bool:
+    """This app processes current/upcoming travel bookings, so a year more
+    than a year in the past — or too far in the future — is almost
+    certainly a hallucinated default (vision models tend to fall back on a
+    "safe" year from their own training data when the year isn't clearly
+    legible in the image) rather than something actually read from the
+    source."""
+    now_year = datetime.now().year
+    return (now_year - 1) <= y <= (now_year + 2)
+
+
+def _resolve_missing_year(mo: int, d: int) -> int:
+    """Picks a year when the source doesn't show one (or shows an
+    implausible one): the current year, unless that combination of
+    month/day has already passed by more than a month, in which case next
+    year is the far more sensible guess — this app is for upcoming travel,
+    not the past."""
+    today = datetime.now()
+    year = today.year
+    try:
+        candidate = datetime(year, mo, d)
+    except ValueError:
+        return year  # invalid day/month combo (e.g. Feb 30) - let the caller handle it
+    if (today - candidate).days > 30:
+        year += 1
+    return year
+
+
+def _date_result(y, mo: int, d: int, raw: str) -> str:
+    """Builds the final normalized date string. If the year is missing or
+    isn't plausible for a current/upcoming booking, a sensible year is
+    filled in (see _resolve_missing_year) rather than showing a
+    confidently-wrong one like "2024-08-14" when the source never actually
+    showed 2024, or dropping the year and showing no date at all."""
+    if y is not None and _is_plausible_year(y):
+        return f"{y:04d}-{mo:02d}-{d:02d}"
+    resolved = _resolve_missing_year(mo, d)
+    if y is not None:
+        logger.warning("Dropping implausible year %d from %r; using %d instead", y, raw, resolved)
+    return f"{resolved:04d}-{mo:02d}-{d:02d}"
+
+
 def normalize_date(value: str) -> str:
-    """Normalizes dates to YYYY-MM-DD where possible. Handles '2026-08-14',
-    '14 Aug 2026', 'Aug 14, 2026', '14/08/2026' (day-first assumed, as is
-    standard on airline documents). If the format is ambiguous or incomplete
-    (e.g. no year), returns the cleaned original text instead of guessing."""
+    """Normalizes dates to YYYY-MM-DD. Handles '2026-08-14', '14 Aug 2026',
+    'Aug 14, 2026', '14/08/2026' (day-first assumed, as is standard on
+    airline documents), and bare day+month with no year at all ('14 Aug').
+    A year that isn't plausible for a current/upcoming booking — or that's
+    missing entirely — is replaced with a sensible current/next year (see
+    _resolve_missing_year) rather than trusted or left blank."""
     v = _s(value)
     if not v:
         return ""
@@ -105,7 +150,7 @@ def normalize_date(value: str) -> str:
     if m:
         y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
         if 1 <= mo <= 12 and 1 <= d <= 31:
-            return f"{y:04d}-{mo:02d}-{d:02d}"
+            return _date_result(y, mo, d, v)
         return ""
     # '14 Aug 2026' / 'Aug 14, 2026' / '14 August 2026'
     m = re.search(r"(\d{1,2})\s*([A-Za-z]{3,9}),?\s*(\d{4})", v)
@@ -122,7 +167,7 @@ def normalize_date(value: str) -> str:
         if mo:
             d, y = int(d_txt), int(y_txt)
             if 1 <= d <= 31:
-                return f"{y:04d}-{mo:02d}-{d:02d}"
+                return _date_result(y, mo, d, v)
     # '14/08/2026' or '14-08-2026' - airline docs are day-first
     m = re.fullmatch(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", v)
     if m:
@@ -131,8 +176,24 @@ def normalize_date(value: str) -> str:
         if mo > 12 and d <= 12:
             d, mo = mo, d
         if 1 <= mo <= 12 and 1 <= d <= 31:
-            return f"{y:04d}-{mo:02d}-{d:02d}"
-    # Unrecognized/incomplete (e.g. no year): keep cleaned text, don't guess
+            return _date_result(y, mo, d, v)
+    # 'DD Mon' / 'Mon DD' with no year at all - fill one in
+    m = re.fullmatch(r"(\d{1,2})\s*([A-Za-z]{3,9})", v)
+    if not m:
+        m2 = re.fullmatch(r"([A-Za-z]{3,9})\s*(\d{1,2})", v)
+        if m2:
+            mon_txt, d_txt = m2.group(1), m2.group(2)
+        else:
+            mon_txt = d_txt = None
+    else:
+        d_txt, mon_txt = m.group(1), m.group(2)
+    if mon_txt:
+        mo = _MONTHS.get(mon_txt.lower()[:3])
+        if mo:
+            d = int(d_txt)
+            if 1 <= d <= 31:
+                return _date_result(None, mo, d, v)
+    # Genuinely unrecognized: keep cleaned text, don't guess
     return v
 
 
