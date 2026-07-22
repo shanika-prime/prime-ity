@@ -70,12 +70,12 @@ Structure:
       "cabin_class": "Economy/Business/First",
       "departure_airport_code": "3-letter IATA code",
       "departure_city": "City",
-      "departure_date": "YYYY-MM-DD if determinable, else as shown",
+      "departure_date": "YYYY-MM-DD only if the YEAR is actually visible in the source",
       "departure_time": "24hr HH:MM",
       "departure_terminal": "",
       "arrival_airport_code": "3-letter IATA code",
       "arrival_city": "City",
-      "arrival_date": "YYYY-MM-DD if determinable, else as shown",
+      "arrival_date": "YYYY-MM-DD only if the YEAR is actually visible in the source",
       "arrival_time": "24hr HH:MM",
       "arrival_terminal": "",
       "duration": "e.g. 4h 25m",
@@ -126,6 +126,13 @@ Other rules:
 - If a field is not present in the source, use "" — never guess.
 - Airport codes must be the 3-letter IATA code if shown (e.g. CMB, DXB).
 - Times in 24hr HH:MM.
+
+YEAR — do not guess this under any circumstances. Only include a year in
+departure_date/arrival_date if you can actually see it written in the
+source. If the day and month are shown but no year is visible, write just
+"DD Mon" (e.g. "14 Aug") with NO year attached — do not fill in a year
+from assumption, habit, or any other source. A wrong year is worse than no
+year at all.
 
 ITINERARY SOURCE:
 """
